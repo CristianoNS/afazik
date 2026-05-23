@@ -336,6 +336,7 @@ async def test_all(ctx):
     await ctx.send("✅ Test zakończony.")
 
 
+@bot.command(name="pomoc", aliases=["help"])
 @has_stats_role()
 async def help_cmd(ctx):
     embed = discord.Embed(title="📖 Komendy bota", color=discord.Color.blurple())
