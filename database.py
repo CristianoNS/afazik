@@ -1,12 +1,10 @@
 """
 database.py – obsługa PostgreSQL na Railway.
-Railway oferuje PostgreSQL jako natywną bazę danych.
-Connection string pochodzi ze zmiennej środowiskowej DATABASE_URL.
 """
 
 import os
 import asyncpg
-from datetime import datetime, timedelta
+from datetime import datetime
 
 class Database:
     def __init__(self):
@@ -22,19 +20,19 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS voice_sessions (
-                    id          BIGSERIAL PRIMARY KEY,
-                    user_id     BIGINT      NOT NULL,
-                    display_name TEXT       NOT NULL,
-                    channel_id  BIGINT      NOT NULL,
-                    channel_name TEXT       NOT NULL,
-                    joined_at   TIMESTAMPTZ NOT NULL,
-                    left_at     TIMESTAMPTZ,
-                    duration_s  INTEGER,          -- NULL gdy sesja trwa
-                    is_special  BOOLEAN DEFAULT FALSE
+                    id           BIGSERIAL PRIMARY KEY,
+                    user_id      BIGINT       NOT NULL,
+                    display_name TEXT         NOT NULL,
+                    channel_id   BIGINT       NOT NULL,
+                    channel_name TEXT         NOT NULL,
+                    joined_at    TIMESTAMPTZ  NOT NULL,
+                    left_at      TIMESTAMPTZ,
+                    duration_s   INTEGER,
+                    is_special   BOOLEAN DEFAULT FALSE
                 );
 
-                CREATE INDEX IF NOT EXISTS idx_vs_user   ON voice_sessions(user_id);
-                CREATE INDEX IF NOT EXISTS idx_vs_joined ON voice_sessions(joined_at);
+                CREATE INDEX IF NOT EXISTS idx_vs_user    ON voice_sessions(user_id);
+                CREATE INDEX IF NOT EXISTS idx_vs_joined  ON voice_sessions(joined_at);
                 CREATE INDEX IF NOT EXISTS idx_vs_special ON voice_sessions(is_special);
             """)
 
@@ -43,7 +41,6 @@ class Database:
     async def open_session(self, user_id: int, display_name: str,
                            channel_id: int, channel_name: str,
                            joined_at: datetime, is_special: bool) -> int:
-        """Tworzy nowy rekord sesji i zwraca jej ID."""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("""
                 INSERT INTO voice_sessions
@@ -53,9 +50,8 @@ class Database:
             """, user_id, display_name, channel_id, channel_name, joined_at, is_special)
             return row["id"]
 
-    async def close_session(self, session_id: int, left_at: datetime, duration_s: int,
-                            display_name: str):
-        """Zamyka sesję i zapisuje czas trwania. Aktualizuje też nick."""
+    async def close_session(self, session_id: int, left_at: datetime,
+                            duration_s: int, display_name: str):
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 UPDATE voice_sessions
@@ -65,7 +61,6 @@ class Database:
 
     async def update_session_checkpoint(self, session_id: int, display_name: str,
                                         checkpoint: datetime, duration_so_far: int):
-        """Aktualizuje trwającą sesję (checkpoint co 5 min) – nie zamyka jej."""
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 UPDATE voice_sessions
@@ -76,13 +71,10 @@ class Database:
     # ── Statystyki ────────────────────────────────────────────────────────────
 
     async def get_stats(self, period: str) -> list[dict]:
-        """
-        Zwraca ranking użytkowników wg łącznego czasu na kanałach głosowych.
-        period: 'week' | 'month' | 'halfyear' | 'alltime'
-        """
         cutoff_map = {
             "week":     "NOW() - INTERVAL '7 days'",
             "month":    "NOW() - INTERVAL '30 days'",
+            "quarter":  "NOW() - INTERVAL '90 days'",
             "halfyear": "NOW() - INTERVAL '180 days'",
             "alltime":  "TO_TIMESTAMP(0)",
         }
@@ -91,7 +83,6 @@ class Database:
         query = f"""
             SELECT
                 user_id,
-                -- Najnowszy nick użytkownika
                 (SELECT display_name FROM voice_sessions v2
                  WHERE v2.user_id = vs.user_id
                  ORDER BY joined_at DESC LIMIT 1)  AS display_name,
@@ -108,7 +99,6 @@ class Database:
             return [dict(r) for r in rows]
 
     async def get_special_stats(self) -> list[dict]:
-        """Statystyki tylko ze specjalnego kanału (is_special = TRUE)."""
         query = """
             SELECT
                 user_id,
@@ -128,16 +118,15 @@ class Database:
             return [dict(r) for r in rows]
 
     async def get_user_stats(self, user_id: int) -> list[dict]:
-        """Szczegółowe statystyki jednej osoby (4 okresy + specjalny)."""
         periods = [
-            ("Ostatnie 7 dni",     "NOW() - INTERVAL '7 days'"),
-            ("Ostatnie 30 dni",    "NOW() - INTERVAL '30 days'"),
-            ("Ostatnie 6 miesięcy","NOW() - INTERVAL '180 days'"),
-            ("Wszystkie czasy",    "TO_TIMESTAMP(0)"),
+            ("Ostatnie 7 dni",      "NOW() - INTERVAL '7 days'"),
+            ("Ostatnie 30 dni",     "NOW() - INTERVAL '30 days'"),
+            ("Ostatnie 3 miesiące", "NOW() - INTERVAL '90 days'"),
+            ("Ostatnie 6 miesięcy", "NOW() - INTERVAL '180 days'"),
+            ("Wszystkie czasy",     "TO_TIMESTAMP(0)"),
         ]
         results = []
         async with self.pool.acquire() as conn:
-            # Nick z ostatniej sesji
             nick_row = await conn.fetchrow("""
                 SELECT display_name FROM voice_sessions
                 WHERE user_id = $1 ORDER BY joined_at DESC LIMIT 1
@@ -153,13 +142,12 @@ class Database:
                       AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
                 """, user_id)
                 results.append({
-                    "label": label,
-                    "display_name": display_name,
+                    "label":         label,
+                    "display_name":  display_name,
                     "total_seconds": row["total_seconds"] or 0,
-                    "sessions": row["sessions"] or 0,
+                    "sessions":      row["sessions"] or 0,
                 })
 
-            # Specjalny kanał
             special_row = await conn.fetchrow("""
                 SELECT SUM(COALESCE(duration_s, 0)) AS total_seconds,
                        COUNT(*) AS sessions
@@ -168,10 +156,16 @@ class Database:
                   AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
             """, user_id)
             results.append({
-                "label": "🎉 Specjalny kanał (Pt/Sb 20–02)",
-                "display_name": display_name,
+                "label":         "🎉 Kanał Afazja (Pt/Sb 20–02)",
+                "display_name":  display_name,
                 "total_seconds": special_row["total_seconds"] or 0,
-                "sessions": special_row["sessions"] or 0,
+                "sessions":      special_row["sessions"] or 0,
             })
 
         return results
+
+    async def get_all_voice_user_ids(self) -> set[int]:
+        """Zwraca zbiór user_id wszystkich osób które kiedykolwiek były na voice."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT DISTINCT user_id FROM voice_sessions")
+            return {r["user_id"] for r in rows}
