@@ -3,7 +3,7 @@ tracker.py – śledzenie sesji głosowych w pamięci + zapis do bazy.
 
 Specjalny kanał: zliczany TYLKO gdy jest aktywne okno:
   - Piątek (weekday=4) lub Sobota (weekday=5)
-  - godzina lokalna 20:00–23:59 LUB 00:00–02:00
+  - godzina lokalna 20:00–23:59 LUB 00:00–06:00
 
 Bot pracuje w UTC; konwersja do strefy PL (UTC+1 / UTC+2) przez env TIMEZONE.
 """
@@ -19,18 +19,19 @@ LOCAL_TZ = ZoneInfo(TZ_NAME)
 
 
 def _is_special_window(dt_utc: datetime) -> bool:
-    """Sprawdza czy chwila UTC mieści się w oknie Pt/Sb 20:00–02:00 (czas lokalny)."""
+    """Sprawdza czy chwila UTC mieści się w oknie Pt/Sb 20:00–06:00 (czas lokalny)."""
     local = dt_utc.replace(tzinfo=timezone.utc).astimezone(LOCAL_TZ)
     wd = local.weekday()   # 0=Pon … 4=Pt 5=Sb 6=Nd
     h  = local.hour
 
-    # Piątek 20–23 lub Sobota 00–01 (do 02:00 nie włącznie → h < 2)
+    # Piątek 20–23
     if wd == 4 and h >= 20:
         return True
-    if wd == 5 and (h >= 20 or h < 2):
+    # Sobota 00–05 (noc z piątku) oraz 20–23
+    if wd == 5 and (h < 6 or h >= 20):
         return True
-    # Niedziela 00:00–01:59 – to wciąż "sobota w nocy"
-    if wd == 6 and h < 2:
+    # Niedziela 00–05 (noc z soboty)
+    if wd == 6 and h < 6:
         return True
     return False
 
