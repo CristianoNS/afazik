@@ -267,12 +267,6 @@ async def stats_month(ctx):
     embed = fmt.build_embed(rows, "📆 Aktywność – ostatnie 30 dni", discord.Color.green())
     await ctx.send(embed=embed)
 
-@bot.command(name="czas-polrocze", aliases=["czas-półrocze"])
-@has_stats_role()
-async def stats_halfyear(ctx):
-    rows  = await db.get_stats(period="halfyear")
-    embed = fmt.build_embed(rows, "📊 Aktywność – ostatnie 6 miesięcy", discord.Color.orange())
-    await ctx.send(embed=embed)
 
 @bot.command(name="czas-kwartal", aliases=["czas-kwartał"])
 @has_stats_role()
@@ -295,7 +289,7 @@ async def stats_special(ctx):
         await ctx.send("❌ Specjalny kanał nie jest skonfigurowany (`SPECIAL_CHANNEL_ID`).")
         return
     rows  = await db.get_special_stats()
-    embed = fmt.build_embed(rows, "🎉 Afazja – Pt/Sb 20:00–02:00 (all time)", discord.Color.purple())
+    embed = fmt.build_embed(rows, "🎉 Afazja – Pt/Sb 20:00–06:00 (all time)", discord.Color.purple())
     await ctx.send(embed=embed)
 
 @bot.command(name="czas-kto")
@@ -306,51 +300,52 @@ async def stats_user(ctx, *, member: discord.Member = None):
     embed  = fmt.build_user_embed(rows, target.display_name)
     await ctx.send(embed=embed)
 
-@bot.command(name="czas-online")
-@has_stats_role()
-async def stats_online(ctx):
-    now   = datetime.utcnow()
-    lines = []
-    for uid, session in tracker.active.items():
-        elapsed = now - session["joined"]
-        h, rem  = divmod(int(elapsed.total_seconds()), 3600)
-        m       = rem // 60
-        name    = session["display_name"]
-        chan    = session["channel_name"]
-        special = " 🎉" if session.get("is_special") else ""
-        lines.append(f"**{name}** – #{chan}{special} – `{h:02d}:{m:02d}`")
 
-    if not lines:
-        embed = discord.Embed(description="Nikt nie siedzi teraz na kanałach głosowych. 🔇",
-                              color=discord.Color.greyple())
-    else:
-        embed = discord.Embed(title="🔊 Aktualnie na kanałach",
-                              description="\n".join(lines),
-                              color=discord.Color.teal())
-    await ctx.send(embed=embed)
 
-@bot.command(name="czas-wymus-role")
+@bot.command(name="czas-test")
 @commands.has_permissions(administrator=True)
-async def force_roles(ctx):
-    msg = await ctx.send("⏳ Przeliczam role...")
-    for guild in bot.guilds:
-        await _update_activity_roles(guild, announce=True)
-    await msg.edit(content="✅ Role zaktualizowane.")
+async def test_all(ctx):
+    """Jednorazowy test wszystkich automatycznych procesów (tylko admin)."""
+    await ctx.send("🧪 Uruchamiam test wszystkich procesów...")
 
-@bot.command(name="pomoc", aliases=["help"])
+    # Test raportu miesięcznego
+    await ctx.send("📆 Wysyłam testowy raport miesięczny...")
+    await _send_monthly_report()
+
+    # Test raportu kwartalnego
+    await ctx.send("📊 Wysyłam testowy raport kwartalny...")
+    await _send_quarterly_report()
+
+    # Test rang – konkretny user
+    TEST_USER_ID = 1505984621408551053
+    await ctx.send(f"🎖️ Sprawdzam i aktualizuję rangi dla <@{TEST_USER_ID}>...")
+    for guild in bot.guilds:
+        member = guild.get_member(TEST_USER_ID)
+        if member:
+            rows         = await db.get_stats(period="alltime")
+            user_seconds = {r["user_id"]: int(r["total_seconds"] or 0) for r in rows}
+            total        = user_seconds.get(TEST_USER_ID, 0)
+            h            = total // 3600
+            announce_ch  = bot.get_channel(ROLE_ANNOUNCE_ID) if ROLE_ANNOUNCE_ID else None
+            await ctx.send(f"ℹ️ Użytkownik **{member.display_name}** ma łącznie `{h}h` na kanałach głosowych.")
+            await _apply_roles(member, total, announce_ch)
+            await ctx.send(f"✅ Role dla **{member.display_name}** zaktualizowane.")
+        else:
+            await ctx.send(f"⚠️ Nie znalazłem użytkownika `{TEST_USER_ID}` na żadnym serwerze.")
+
+    await ctx.send("✅ Test zakończony.")
+
+
 @has_stats_role()
 async def help_cmd(ctx):
     embed = discord.Embed(title="📖 Komendy bota", color=discord.Color.blurple())
     cmds = [
         ("!czas-tydzień",      "Ranking aktywności – ostatnie 7 dni"),
         ("!czas-miesiąc",      "Ranking aktywności – ostatnie 30 dni"),
-        ("!czas-półrocze",     "Ranking aktywności – ostatnie 6 miesięcy"),
         ("!czas-kwartał",      "Ranking aktywności – ostatnie 3 miesiące"),
         ("!czas-alltime",      "Ranking aktywności – wszystkie czasy"),
-        ("!czas-afazja",       "Kanał Afazja – Pt/Sb 20:00–02:00"),
+        ("!czas-afazja",       "Kanał Afazja – Pt/Sb 20:00–06:00"),
         ("!czas-kto [@nick]",  "Statystyki konkretnej osoby"),
-        ("!czas-online",       "Kto teraz siedzi na voice i jak długo"),
-        ("!czas-wymus-role",   "Wymuś przeliczenie ról aktywności (admin)"),
         ("!pomoc",             "Ta wiadomość"),
     ]
     for name, desc in cmds:
