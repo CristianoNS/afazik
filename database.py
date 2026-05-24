@@ -1,7 +1,6 @@
 """
 database.py – obsługa PostgreSQL na Railway.
 """
-
 import os
 import asyncpg
 from datetime import datetime
@@ -30,91 +29,84 @@ class Database:
                     duration_s   INTEGER,
                     is_special   BOOLEAN DEFAULT FALSE
                 );
-
                 CREATE INDEX IF NOT EXISTS idx_vs_user    ON voice_sessions(user_id);
                 CREATE INDEX IF NOT EXISTS idx_vs_joined  ON voice_sessions(joined_at);
                 CREATE INDEX IF NOT EXISTS idx_vs_special ON voice_sessions(is_special);
+
+                CREATE TABLE IF NOT EXISTS report_log (
+                    id         BIGSERIAL PRIMARY KEY,
+                    type       TEXT        NOT NULL,
+                    sent_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    entry_count INTEGER
+                );
+
+                CREATE TABLE IF NOT EXISTS role_grants (
+                    id           BIGSERIAL PRIMARY KEY,
+                    user_id      BIGINT      NOT NULL,
+                    display_name TEXT        NOT NULL,
+                    role_name    TEXT        NOT NULL,
+                    total_seconds INTEGER   NOT NULL,
+                    granted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
             """)
 
-    # ── Zapis sesji ──────────────────────────────────────────────────────────
+    # ── Sesje ────────────────────────────────────────────────────────────────
 
-    async def open_session(self, user_id: int, display_name: str,
-                           channel_id: int, channel_name: str,
-                           joined_at: datetime, is_special: bool) -> int:
+    async def open_session(self, user_id, display_name, channel_id, channel_name, joined_at, is_special) -> int:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("""
-                INSERT INTO voice_sessions
-                    (user_id, display_name, channel_id, channel_name, joined_at, is_special)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                RETURNING id
+                INSERT INTO voice_sessions (user_id, display_name, channel_id, channel_name, joined_at, is_special)
+                VALUES ($1,$2,$3,$4,$5,$6) RETURNING id
             """, user_id, display_name, channel_id, channel_name, joined_at, is_special)
             return row["id"]
 
-    async def close_session(self, session_id: int, left_at: datetime,
-                            duration_s: int, display_name: str):
+    async def close_session(self, session_id, left_at, duration_s, display_name):
         async with self.pool.acquire() as conn:
             await conn.execute("""
-                UPDATE voice_sessions
-                SET left_at = $1, duration_s = $2, display_name = $3
-                WHERE id = $4
+                UPDATE voice_sessions SET left_at=$1, duration_s=$2, display_name=$3 WHERE id=$4
             """, left_at, duration_s, display_name, session_id)
 
-    async def update_session_checkpoint(self, session_id: int, display_name: str,
-                                        checkpoint: datetime, duration_so_far: int):
+    async def update_session_checkpoint(self, session_id, display_name, checkpoint, duration_so_far):
         async with self.pool.acquire() as conn:
             await conn.execute("""
-                UPDATE voice_sessions
-                SET display_name = $1, duration_s = $2
-                WHERE id = $3 AND left_at IS NULL
+                UPDATE voice_sessions SET display_name=$1, duration_s=$2
+                WHERE id=$3 AND left_at IS NULL
             """, display_name, duration_so_far, session_id)
 
     # ── Statystyki ────────────────────────────────────────────────────────────
 
     async def get_stats(self, period: str) -> list[dict]:
         cutoff_map = {
-            "week":     "NOW() - INTERVAL '7 days'",
-            "month":    "NOW() - INTERVAL '30 days'",
-            "quarter":  "NOW() - INTERVAL '90 days'",
-            "halfyear": "NOW() - INTERVAL '180 days'",
-            "alltime":  "TO_TIMESTAMP(0)",
+            "week":    "NOW() - INTERVAL '7 days'",
+            "month":   "NOW() - INTERVAL '30 days'",
+            "quarter": "NOW() - INTERVAL '90 days'",
+            "alltime": "TO_TIMESTAMP(0)",
         }
-        cutoff_expr = cutoff_map.get(period, "TO_TIMESTAMP(0)")
-
-        query = f"""
-            SELECT
-                user_id,
-                (SELECT display_name FROM voice_sessions v2
-                 WHERE v2.user_id = vs.user_id
-                 ORDER BY joined_at DESC LIMIT 1)  AS display_name,
-                SUM(COALESCE(duration_s, 0))        AS total_seconds
-            FROM voice_sessions vs
-            WHERE joined_at >= {cutoff_expr}
-              AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
-            GROUP BY user_id
-            ORDER BY total_seconds DESC
-            LIMIT 25
-        """
+        cutoff = cutoff_map.get(period, "TO_TIMESTAMP(0)")
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(query)
+            rows = await conn.fetch(f"""
+                SELECT user_id,
+                    (SELECT display_name FROM voice_sessions v2
+                     WHERE v2.user_id=vs.user_id ORDER BY joined_at DESC LIMIT 1) AS display_name,
+                    SUM(COALESCE(duration_s,0)) AS total_seconds
+                FROM voice_sessions vs
+                WHERE joined_at >= {cutoff}
+                  AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 25
+            """)
             return [dict(r) for r in rows]
 
     async def get_special_stats(self) -> list[dict]:
-        query = """
-            SELECT
-                user_id,
-                (SELECT display_name FROM voice_sessions v2
-                 WHERE v2.user_id = vs.user_id
-                 ORDER BY joined_at DESC LIMIT 1)  AS display_name,
-                SUM(COALESCE(duration_s, 0))        AS total_seconds
-            FROM voice_sessions vs
-            WHERE is_special = TRUE
-              AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
-            GROUP BY user_id
-            ORDER BY total_seconds DESC
-            LIMIT 25
-        """
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(query)
+            rows = await conn.fetch("""
+                SELECT user_id,
+                    (SELECT display_name FROM voice_sessions v2
+                     WHERE v2.user_id=vs.user_id ORDER BY joined_at DESC LIMIT 1) AS display_name,
+                    SUM(COALESCE(duration_s,0)) AS total_seconds
+                FROM voice_sessions vs
+                WHERE is_special=TRUE AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 25
+            """)
             return [dict(r) for r in rows]
 
     async def get_user_stats(self, user_id: int) -> list[dict]:
@@ -122,50 +114,75 @@ class Database:
             ("Ostatnie 7 dni",      "NOW() - INTERVAL '7 days'"),
             ("Ostatnie 30 dni",     "NOW() - INTERVAL '30 days'"),
             ("Ostatnie 3 miesiące", "NOW() - INTERVAL '90 days'"),
-            ("Ostatnie 6 miesięcy", "NOW() - INTERVAL '180 days'"),
             ("Wszystkie czasy",     "TO_TIMESTAMP(0)"),
         ]
         results = []
         async with self.pool.acquire() as conn:
-            nick_row = await conn.fetchrow("""
-                SELECT display_name FROM voice_sessions
-                WHERE user_id = $1 ORDER BY joined_at DESC LIMIT 1
-            """, user_id)
-            display_name = nick_row["display_name"] if nick_row else str(user_id)
-
+            nick = await conn.fetchrow(
+                "SELECT display_name FROM voice_sessions WHERE user_id=$1 ORDER BY joined_at DESC LIMIT 1", user_id)
+            dn = nick["display_name"] if nick else str(user_id)
             for label, cutoff in periods:
                 row = await conn.fetchrow(f"""
-                    SELECT SUM(COALESCE(duration_s, 0)) AS total_seconds,
-                           COUNT(*) AS sessions
+                    SELECT SUM(COALESCE(duration_s,0)) AS total_seconds, COUNT(*) AS sessions
                     FROM voice_sessions
-                    WHERE user_id = $1 AND joined_at >= {cutoff}
+                    WHERE user_id=$1 AND joined_at>={cutoff}
                       AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
                 """, user_id)
-                results.append({
-                    "label":         label,
-                    "display_name":  display_name,
-                    "total_seconds": row["total_seconds"] or 0,
-                    "sessions":      row["sessions"] or 0,
-                })
-
-            special_row = await conn.fetchrow("""
-                SELECT SUM(COALESCE(duration_s, 0)) AS total_seconds,
-                       COUNT(*) AS sessions
-                FROM voice_sessions
-                WHERE user_id = $1 AND is_special = TRUE
+                results.append({"label": label, "display_name": dn,
+                                "total_seconds": row["total_seconds"] or 0,
+                                "sessions": row["sessions"] or 0})
+            sp = await conn.fetchrow("""
+                SELECT SUM(COALESCE(duration_s,0)) AS total_seconds, COUNT(*) AS sessions
+                FROM voice_sessions WHERE user_id=$1 AND is_special=TRUE
                   AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
             """, user_id)
-            results.append({
-                "label":         "🎉 Kanał Afazja (Pt/Sb 20–02)",
-                "display_name":  display_name,
-                "total_seconds": special_row["total_seconds"] or 0,
-                "sessions":      special_row["sessions"] or 0,
-            })
-
+            results.append({"label": "🎉 Kanał Afazja (Pt/Sb 20–06)", "display_name": dn,
+                            "total_seconds": sp["total_seconds"] or 0,
+                            "sessions": sp["sessions"] or 0})
         return results
 
     async def get_all_voice_user_ids(self) -> set[int]:
-        """Zwraca zbiór user_id wszystkich osób które kiedykolwiek były na voice."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("SELECT DISTINCT user_id FROM voice_sessions")
             return {r["user_id"] for r in rows}
+
+    async def get_daily_activity(self, days: int = 30) -> list[dict]:
+        """Aktywność dzienna (suma sekund) z ostatnich N dni – do wykresu."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(f"""
+                SELECT DATE(joined_at AT TIME ZONE 'Europe/Warsaw') AS day,
+                       SUM(COALESCE(duration_s, 0)) AS total_seconds,
+                       COUNT(DISTINCT user_id) AS unique_users
+                FROM voice_sessions
+                WHERE joined_at >= NOW() - INTERVAL '{days} days'
+                  AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                GROUP BY day ORDER BY day ASC
+            """)
+            return [dict(r) for r in rows]
+
+    # ── Logi raportów i rang ──────────────────────────────────────────────────
+
+    async def log_report(self, report_type: str, entry_count: int):
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO report_log (type, entry_count) VALUES ($1, $2)",
+                report_type, entry_count)
+
+    async def get_report_log(self) -> list[dict]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM report_log ORDER BY sent_at DESC LIMIT 50")
+            return [dict(r) for r in rows]
+
+    async def log_role_grant(self, user_id: int, display_name: str, role_name: str, total_seconds: int):
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO role_grants (user_id, display_name, role_name, total_seconds)
+                VALUES ($1,$2,$3,$4)
+            """, user_id, display_name, role_name, total_seconds)
+
+    async def get_role_grants(self) -> list[dict]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM role_grants ORDER BY granted_at DESC LIMIT 100")
+            return [dict(r) for r in rows]
