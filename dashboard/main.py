@@ -135,11 +135,6 @@ async def api_special(request: Request):
     require_auth(request)
     return await bot_get("/api/special")
 
-@app.get("/api/online")
-async def api_online(request: Request):
-    require_auth(request)
-    return await bot_get("/api/online")
-
 @app.get("/api/reports")
 async def api_reports(request: Request):
     require_auth(request)
@@ -159,12 +154,6 @@ async def api_role_grants(request: Request):
 async def api_activity_chart(request: Request):
     require_auth(request)
     return await bot_get("/api/activity-chart")
-
-@app.post("/api/action")
-async def api_action(request: Request):
-    require_auth(request)
-    body = await request.json()
-    return await bot_post("/api/action", body)
 
 # ── Główna strona – SPA ───────────────────────────────────────────────────────
 
