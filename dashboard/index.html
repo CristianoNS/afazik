@@ -4,102 +4,27 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Voice Tracker Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js">
-// ── Ustawienia ────────────────────────────────────────────────────────────
-
-async function loadSettings() {
-  const status = document.getElementById("settings-status");
-  status.textContent = "Ładowanie...";
-  status.style.color = "var(--muted)";
-  try {
-    const data = await apiFetch("/api/settings");
-    const fields = [
-      "rules_reaction", "kick_after_hours", "threshold_opierzony", "threshold_brojler",
-      "msg_verified", "msg_kick", "msg_opierzony", "msg_brojler", "cmd_prefix"
-    ];
-    fields.forEach(key => {
-      const el = document.getElementById("s-" + key);
-      if (el && data[key] !== undefined) el.value = data[key];
-    });
-    status.textContent = "✓ Załadowano";
-    status.style.color = "var(--accent2)";
-    setTimeout(() => status.textContent = "", 3000);
-  } catch(e) {
-    status.textContent = "Błąd ładowania";
-    status.style.color = "var(--danger)";
-  }
-}
-
-async function saveSettings() {
-  const btn    = document.getElementById("save-btn");
-  const status = document.getElementById("settings-status");
-  btn.disabled = true;
-  status.textContent = "Zapisywanie...";
-  status.style.color = "var(--muted)";
-
-  const fields = [
-    "rules_reaction", "kick_after_hours", "threshold_opierzony", "threshold_brojler",
-    "msg_verified", "msg_kick", "msg_opierzony", "msg_brojler", "cmd_prefix"
-  ];
-  const body = {};
-  fields.forEach(key => {
-    const el = document.getElementById("s-" + key);
-    if (el) body[key] = el.value;
-  });
-
-  try {
-    const res  = await fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    const data = await res.json();
-    if (data.ok) {
-      status.textContent = `✓ Zapisano (${data.updated.length} ustawień)`;
-      status.style.color = "var(--accent2)";
-      toast("Ustawienia zapisane!", true);
-    } else {
-      throw new Error(data.message || "Błąd");
-    }
-  } catch(e) {
-    status.textContent = "Błąd zapisu";
-    status.style.color = "var(--danger)";
-    toast("Błąd zapisu ustawień", false);
-  } finally {
-    btn.disabled = false;
-    setTimeout(() => status.textContent = "", 4000);
-  }
-}
-
-// Ładuj ustawienia gdy przechodzisz do zakładki
-document.querySelectorAll(".nav-item").forEach(item => {
-  item.addEventListener("click", () => {
-    if (item.dataset.page === "settings" && !pageLoaded["settings"]) {
-      loadSettings();
-    }
-  });
-});
-
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg:       #0f1117;
-    --surface:  #1a1d27;
-    --card:     #22263a;
-    --border:   #2e3354;
-    --accent:   #5865f2;
-    --accent2:  #57f287;
-    --accent3:  #fee75c;
-    --accent4:  #eb459e;
-    --text:     #e3e5e8;
-    --muted:    #72767d;
-    --danger:   #ed4245;
+    --bg:      #0f1117;
+    --surface: #1a1d27;
+    --card:    #22263a;
+    --border:  #2e3354;
+    --accent:  #5865f2;
+    --accent2: #57f287;
+    --accent3: #fee75c;
+    --accent4: #eb459e;
+    --text:    #e3e5e8;
+    --muted:   #72767d;
+    --danger:  #ed4245;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
 
-  /* ── Layout ── */
   .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+
+  /* Sidebar */
   .sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 24px 0; display: flex; flex-direction: column; }
   .sidebar-logo { padding: 0 20px 24px; font-size: 1.1rem; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 10px; }
   .sidebar-logo span { font-size: 1.5rem; }
@@ -111,12 +36,13 @@ document.querySelectorAll(".nav-item").forEach(item => {
   .logout-btn { width: 100%; padding: 8px; background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: all .15s; }
   .logout-btn:hover { border-color: var(--danger); color: var(--danger); }
 
+  /* Main */
   .main { padding: 32px; overflow-y: auto; }
   .page { display: none; }
   .page.active { display: block; }
   .page-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
 
-  /* ── Karty ── */
+  /* Karty */
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
   .card-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
@@ -126,8 +52,8 @@ document.querySelectorAll(".nav-item").forEach(item => {
   .card-value.yellow { color: var(--accent3); }
   .card-value.pink   { color: var(--accent4); }
 
-  /* ── Tabela ── */
-  .table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  /* Tabela */
+  .table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 28px; }
   .table-header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
   .table-header h3 { font-size: 1rem; }
   table { width: 100%; border-collapse: collapse; }
@@ -135,65 +61,34 @@ document.querySelectorAll(".nav-item").forEach(item => {
   td { padding: 12px 16px; font-size: 0.9rem; border-bottom: 1px solid var(--border); }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: rgba(88,101,242,.05); }
-  .rank { font-weight: 700; width: 40px; }
   .medal-1 { color: #ffd700; }
   .medal-2 { color: #c0c0c0; }
   .medal-3 { color: #cd7f32; }
   .time-badge { background: rgba(88,101,242,.15); color: var(--accent); padding: 3px 10px; border-radius: 20px; font-size: 0.82rem; font-weight: 600; }
-  .online-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent2); margin-right: 6px; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-  /* ── Przyciski akcji ── */
-  .actions { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
-  .btn { padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: all .15s; display: flex; align-items: center; gap: 8px; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover { background: #4752c4; }
-  .btn-success { background: rgba(87,242,135,.15); color: var(--accent2); border: 1px solid var(--accent2); }
-  .btn-success:hover { background: rgba(87,242,135,.25); }
-  .btn-warning { background: rgba(254,231,92,.1); color: var(--accent3); border: 1px solid var(--accent3); }
-  .btn-warning:hover { background: rgba(254,231,92,.2); }
-  .btn:disabled { opacity: .5; cursor: not-allowed; }
-
-  /* ── Tabs ── */
+  /* Tabs */
   .tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--surface); padding: 4px; border-radius: 10px; width: fit-content; }
   .tab { padding: 7px 16px; border-radius: 7px; cursor: pointer; font-size: 0.85rem; color: var(--muted); transition: all .15s; }
   .tab.active { background: var(--accent); color: #fff; }
 
-  /* ── Wykres ── */
+  /* Wykres */
   .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 28px; }
   .chart-wrap h3 { margin-bottom: 16px; font-size: 1rem; }
 
-  /* ── Toast ── */
-  #toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px; font-size: 0.9rem; opacity: 0; transform: translateY(10px); transition: all .3s; pointer-events: none; z-index: 999; max-width: 320px; }
-  #toast.show { opacity: 1; transform: translateY(0); }
-  #toast.ok   { border-color: var(--accent2); color: var(--accent2); }
-  #toast.err  { border-color: var(--danger);  color: var(--danger); }
-
-  /* ── Tag rangi ── */
+  /* Rangi */
   .role-tag { padding: 2px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }
   .role-OPIERZONY { background: rgba(87,242,135,.15); color: var(--accent2); }
-  .role-BROJLER   { background: rgba(254,231,92,.15); color: var(--accent3); }
+  .role-BROJLER   { background: rgba(254,231,92,.15);  color: var(--accent3); }
 
-  /* ── Ustawienia ── */
-  .setting-row { margin-bottom: 20px; }
-  .setting-row label { display: block; font-size: .85rem; font-weight: 600; color: var(--text); margin-bottom: 6px; }
-  .setting-row input[type="text"],
-  .setting-row input[type="number"],
-  .setting-row textarea {
-    width: 100%; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: .9rem;
-    font-family: inherit; transition: border-color .15s; resize: vertical;
-  }
-  .setting-row input:focus,
-  .setting-row textarea:focus { outline: none; border-color: var(--accent); }
-  .setting-row input[type="number"] { width: 140px; }
-  .setting-row .setting-hint { display: block; font-size: .78rem; color: var(--muted); margin-top: 5px; }
-  .setting-row code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .78rem; color: var(--accent3); }
-
-  /* ── Loading ── */
+  /* Loading */
   .loading { color: var(--muted); padding: 40px; text-align: center; font-size: 0.9rem; }
 
-  /* ── Responsive ── */
+  /* Toast */
+  #toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px; font-size: 0.9rem; opacity: 0; transform: translateY(10px); transition: all .3s; pointer-events: none; z-index: 999; max-width: 320px; }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.ok  { border-color: var(--accent2); color: var(--accent2); }
+  #toast.err { border-color: var(--danger);  color: var(--danger); }
+
   @media (max-width: 768px) {
     .layout { grid-template-columns: 1fr; }
     .sidebar { display: none; }
@@ -204,7 +99,6 @@ document.querySelectorAll(".nav-item").forEach(item => {
 <body>
 <div class="layout">
 
-  <!-- ── Sidebar ── -->
   <aside class="sidebar">
     <div class="sidebar-logo"><span>🎙️</span> Voice Tracker</div>
     <nav>
@@ -213,15 +107,12 @@ document.querySelectorAll(".nav-item").forEach(item => {
       <div class="nav-item" data-page="reports"><span class="icon">📨</span> Raporty</div>
       <div class="nav-item" data-page="roles"><span class="icon">🎖️</span> Rangi</div>
       <div class="nav-item" data-page="inactive"><span class="icon">😴</span> Nieaktywni</div>
-      <div class="nav-item" data-page="actions"><span class="icon">⚡</span> Akcje</div>
-      <div class="nav-item" data-page="settings"><span class="icon">⚙️</span> Ustawienia</div>
     </nav>
     <div class="sidebar-footer">
       <button class="logout-btn" onclick="location='/logout'">Wyloguj się</button>
     </div>
   </aside>
 
-  <!-- ── Main ── -->
   <main class="main">
 
     <!-- Rankingi -->
@@ -240,10 +131,9 @@ document.querySelectorAll(".nav-item").forEach(item => {
           <h3 id="ranking-title">Ostatnie 7 dni</h3>
           <span id="ranking-count" style="color:var(--muted);font-size:.85rem"></span>
         </div>
-        <table><thead><tr>
-          <th>#</th><th>Użytkownik</th><th>Czas łącznie</th>
-        </tr></thead>
-        <tbody id="ranking-body"><tr><td colspan="3" class="loading">Ładowanie...</td></tr></tbody>
+        <table>
+          <thead><tr><th>#</th><th>Użytkownik</th><th>Czas łącznie</th></tr></thead>
+          <tbody id="ranking-body"><tr><td colspan="3" class="loading">Ładowanie...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -266,10 +156,9 @@ document.querySelectorAll(".nav-item").forEach(item => {
       <div class="page-title">📨 Historia raportów</div>
       <div class="table-wrap">
         <div class="table-header"><h3>Wysłane raporty automatyczne</h3></div>
-        <table><thead><tr>
-          <th>Typ</th><th>Data wysłania</th><th>Liczba wpisów</th>
-        </tr></thead>
-        <tbody id="reports-body"><tr><td colspan="3" class="loading">Ładowanie...</td></tr></tbody>
+        <table>
+          <thead><tr><th>Typ</th><th>Data wysłania</th><th>Liczba wpisów</th></tr></thead>
+          <tbody id="reports-body"><tr><td colspan="3" class="loading">Ładowanie...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -280,10 +169,9 @@ document.querySelectorAll(".nav-item").forEach(item => {
       <div class="cards" id="cards-roles"></div>
       <div class="table-wrap">
         <div class="table-header"><h3>Historia nadanych rang</h3></div>
-        <table><thead><tr>
-          <th>Użytkownik</th><th>Ranga</th><th>Czas w momencie nadania</th><th>Data</th>
-        </tr></thead>
-        <tbody id="roles-body"><tr><td colspan="4" class="loading">Ładowanie...</td></tr></tbody>
+        <table>
+          <thead><tr><th>Użytkownik</th><th>Ranga</th><th>Czas w momencie nadania</th><th>Data</th></tr></thead>
+          <tbody id="roles-body"><tr><td colspan="4" class="loading">Ładowanie...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -293,106 +181,11 @@ document.querySelectorAll(".nav-item").forEach(item => {
       <div class="page-title">😴 Nieaktywni członkowie</div>
       <div class="cards" id="cards-inactive"></div>
       <div class="table-wrap">
-        <div class="table-header">
-          <h3>Osoby które nigdy nie były na kanale głosowym</h3>
-        </div>
-        <table><thead><tr>
-          <th>#</th><th>Użytkownik</th><th>Na serwerze od</th>
-        </tr></thead>
-        <tbody id="inactive-body"><tr><td colspan="3" class="loading">Ładowanie...</td></tr></tbody>
+        <div class="table-header"><h3>Osoby które nigdy nie były na kanale głosowym</h3></div>
+        <table>
+          <thead><tr><th>#</th><th>Użytkownik</th><th>Na serwerze od</th></tr></thead>
+          <tbody id="inactive-body"><tr><td colspan="3" class="loading">Ładowanie...</td></tr></tbody>
         </table>
-      </div>
-    </div>
-
-    <!-- Akcje -->
-    <div class="page" id="page-actions">
-      <div class="page-title">⚡ Akcje manualne</div>
-      <div class="cards" id="cards-online"></div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px">
-        <h3 style="margin-bottom:16px;font-size:1rem">🔊 Aktualnie na kanałach głosowych</h3>
-        <table><thead><tr>
-          <th>Użytkownik</th><th>Kanał</th><th>Czas na kanale</th>
-        </tr></thead>
-        <tbody id="online-body"><tr><td colspan="3" class="loading">Ładowanie...</td></tr></tbody>
-        </table>
-      </div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px">
-        <h3 style="margin-bottom:6px;font-size:1rem">Wymuś akcje bota</h3>
-        <p style="color:var(--muted);font-size:.85rem;margin-bottom:20px">Akcje wykonują się natychmiast i działają identycznie jak automatyczne zadania bota.</p>
-        <div class="actions">
-          <button class="btn btn-success" onclick="doAction('monthly_report')">📆 Wyślij raport miesięczny</button>
-          <button class="btn btn-warning" onclick="doAction('quarterly_report')">📊 Wyślij raport kwartalny</button>
-          <button class="btn btn-primary" onclick="doAction('update_roles')">🎖️ Przelicz rangi</button>
-        </div>
-        <div id="action-result" style="display:none;margin-top:16px;padding:12px 16px;border-radius:8px;font-size:.9rem"></div>
-      </div>
-    </div>
-
-    <!-- Ustawienia -->
-    <div class="page" id="page-settings">
-      <div class="page-title">⚙️ Ustawienia bota</div>
-
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px">
-        <h3 style="margin-bottom:20px;font-size:1rem;color:var(--accent)">🛡️ Weryfikacja regulaminu</h3>
-        <div class="setting-row">
-          <label>Emoji akceptacji regulaminu</label>
-          <input type="text" id="s-rules_reaction" placeholder="np. 👍 lub ✅" maxlength="10">
-          <span class="setting-hint">Emoji które user musi kliknąć pod wiadomością z regulaminem</span>
-        </div>
-        <div class="setting-row">
-          <label>Wyrzuć po ilu godzinach bez akceptacji</label>
-          <input type="number" id="s-kick_after_hours" min="1" max="720" placeholder="48">
-          <span class="setting-hint">Domyślnie 48h. Bot wyrzuca usera który nie zaakceptował regulaminu.</span>
-        </div>
-        <div class="setting-row">
-          <label>Wiadomość DM po akceptacji regulaminu</label>
-          <textarea id="s-msg_verified" rows="3" placeholder="Treść wiadomości powitalnej..."></textarea>
-          <span class="setting-hint">Wysyłana do usera gdy zaakceptuje regulamin. Możesz użyć dowolnego tekstu.</span>
-        </div>
-        <div class="setting-row">
-          <label>Wiadomość DM przed wyrzuceniem</label>
-          <textarea id="s-msg_kick" rows="3" placeholder="Treść wiadomości przed kickiem..."></textarea>
-          <span class="setting-hint">Użyj <code>{hours}</code> aby wstawić liczbę godzin. Np. "nie zaakceptowałeś w ciągu {hours}h"</span>
-        </div>
-      </div>
-
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px">
-        <h3 style="margin-bottom:20px;font-size:1rem;color:var(--accent2)">🎖️ System rang aktywności</h3>
-        <div class="setting-row">
-          <label>Próg rangi OPIERZONY (godziny)</label>
-          <input type="number" id="s-threshold_opierzony" min="1" max="9999" placeholder="48">
-          <span class="setting-hint">Łączny czas na kanałach głosowych wymagany do uzyskania rangi OPIERZONY.</span>
-        </div>
-        <div class="setting-row">
-          <label>Próg rangi BROJLER (godziny)</label>
-          <input type="number" id="s-threshold_brojler" min="1" max="9999" placeholder="96">
-          <span class="setting-hint">Łączny czas na kanałach głosowych wymagany do uzyskania rangi BROJLER.</span>
-        </div>
-        <div class="setting-row">
-          <label>Ogłoszenie o nadaniu rangi OPIERZONY</label>
-          <textarea id="s-msg_opierzony" rows="3"></textarea>
-          <span class="setting-hint">Użyj <code>{mention}</code> (oznaczenie usera), <code>{role}</code> (nazwa rangi), <code>{hours}</code> (próg godzin)</span>
-        </div>
-        <div class="setting-row">
-          <label>Ogłoszenie o nadaniu rangi BROJLER</label>
-          <textarea id="s-msg_brojler" rows="3"></textarea>
-          <span class="setting-hint">Użyj <code>{mention}</code>, <code>{role}</code>, <code>{hours}</code></span>
-        </div>
-      </div>
-
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px">
-        <h3 style="margin-bottom:20px;font-size:1rem;color:var(--accent3)">🤖 Ogólne</h3>
-        <div class="setting-row">
-          <label>Prefix komend Discord</label>
-          <input type="text" id="s-cmd_prefix" maxlength="5" placeholder="!">
-          <span class="setting-hint">Znak przed komendami, np. <code>!</code> (daje !pomoc) lub <code>/</code></span>
-        </div>
-      </div>
-
-      <div style="display:flex;gap:12px;align-items:center">
-        <button class="btn btn-primary" onclick="saveSettings()" id="save-btn">💾 Zapisz ustawienia</button>
-        <button class="btn btn-success" onclick="loadSettings()" style="background:transparent;border:1px solid var(--border);color:var(--muted)">↺ Odśwież</button>
-        <span id="settings-status" style="font-size:.85rem"></span>
       </div>
     </div>
 
@@ -416,23 +209,17 @@ function fmtTime(s) {
 function fmtDate(iso) {
   if (!iso) return "–";
   const d = new Date(iso);
-  return d.toLocaleDateString("pl-PL") + " " + d.toLocaleTimeString("pl-PL", {hour:"2-digit",minute:"2-digit"});
-}
-
-function fmtOnline(s) {
-  s = parseInt(s) || 0;
-  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
-  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+  return d.toLocaleDateString("pl-PL") + " " + d.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
 }
 
 function medal(i) {
-  if (i===0) return '<span class="medal-1">🥇</span>';
-  if (i===1) return '<span class="medal-2">🥈</span>';
-  if (i===2) return '<span class="medal-3">🥉</span>';
-  return `<span style="color:var(--muted)">${i+1}.</span>`;
+  if (i === 0) return '<span class="medal-1">🥇</span>';
+  if (i === 1) return '<span class="medal-2">🥈</span>';
+  if (i === 2) return '<span class="medal-3">🥉</span>';
+  return `<span style="color:var(--muted)">${i + 1}.</span>`;
 }
 
-function toast(msg, ok=true) {
+function toast(msg, ok = true) {
   const el = document.getElementById("toast");
   el.textContent = msg;
   el.className = "show " + (ok ? "ok" : "err");
@@ -456,7 +243,7 @@ document.querySelectorAll(".nav-item").forEach(item => {
     document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
     item.classList.add("active");
     const page = item.dataset.page;
-    document.getElementById("page-"+page).classList.add("active");
+    document.getElementById("page-" + page).classList.add("active");
     if (!pageLoaded[page]) { loadPage(page); pageLoaded[page] = true; }
   });
 });
@@ -467,17 +254,17 @@ function loadPage(page) {
   if (page === "reports")  loadReports();
   if (page === "roles")    loadRoles();
   if (page === "inactive") loadInactive();
-  if (page === "actions")  loadActions();
 }
 
-// Auto-ładuj pierwszą stronę
 loadPage("rankings");
 
 // ── Rankingi ──────────────────────────────────────────────────────────────
 
-const PERIOD_LABELS = { week:"Ostatnie 7 dni", month:"Ostatnie 30 dni",
-                        quarter:"Ostatnie 3 miesiące", alltime:"Wszystkie czasy",
-                        special:"🎉 Afazja (all time)" };
+const PERIOD_LABELS = {
+  week: "Ostatnie 7 dni", month: "Ostatnie 30 dni",
+  quarter: "Ostatnie 3 miesiące", alltime: "Wszystkie czasy",
+  special: "🎉 Afazja (all time)"
+};
 
 document.querySelectorAll(".tab[data-period]").forEach(tab => {
   tab.addEventListener("click", () => {
@@ -498,12 +285,11 @@ async function loadRankings(period) {
 
     document.getElementById("ranking-count").textContent = `${data.length} osób`;
 
-    // Karty podsumowujące
     if (data.length > 0) {
-      const total = data.reduce((a,r) => a + parseInt(r.total_seconds||0), 0);
+      const total = data.reduce((a, r) => a + parseInt(r.total_seconds || 0), 0);
       document.getElementById("cards-rankings").innerHTML = `
         <div class="card"><div class="card-label">Łącznie osób</div><div class="card-value blue">${data.length}</div></div>
-        <div class="card"><div class="card-label">Lider</div><div class="card-value green" style="font-size:1.1rem">${data[0]?.display_name||"–"}</div></div>
+        <div class="card"><div class="card-label">Lider</div><div class="card-value green" style="font-size:1.1rem">${data[0]?.display_name || "–"}</div></div>
         <div class="card"><div class="card-label">Czas lidera</div><div class="card-value yellow">${fmtTime(data[0]?.total_seconds)}</div></div>
         <div class="card"><div class="card-label">Łączny czas</div><div class="card-value pink">${fmtTime(total)}</div></div>
       `;
@@ -513,14 +299,14 @@ async function loadRankings(period) {
       tbody.innerHTML = '<tr><td colspan="3" class="loading">Brak danych za ten okres.</td></tr>';
       return;
     }
-    tbody.innerHTML = data.map((r,i) => `
+    tbody.innerHTML = data.map((r, i) => `
       <tr>
-        <td class="rank">${medal(i)}</td>
+        <td style="width:40px">${medal(i)}</td>
         <td>${r.display_name || "–"}</td>
         <td><span class="time-badge">${fmtTime(r.total_seconds)}</span></td>
       </tr>
     `).join("");
-  } catch(e) {
+  } catch (e) {
     tbody.innerHTML = `<tr><td colspan="3" class="loading" style="color:var(--danger)">Błąd ładowania danych.</td></tr>`;
     toast("Błąd ładowania rankingu", false);
   }
@@ -532,48 +318,54 @@ let chartActivity, chartUsers;
 
 async function loadCharts() {
   try {
-    const data = await apiFetch("/api/activity-chart");
+    const data   = await apiFetch("/api/activity-chart");
     const labels = data.map(r => r.day);
-    const hours  = data.map(r => (parseInt(r.total_seconds)||0) / 3600);
-    const users  = data.map(r => parseInt(r.unique_users)||0);
+    const hours  = data.map(r => +((parseInt(r.total_seconds) || 0) / 3600).toFixed(1));
+    const users  = data.map(r => parseInt(r.unique_users) || 0);
 
-    const cfg = (label, color, d) => ({
+    const makeCfg = (label, color, d) => ({
       type: "bar",
-      data: { labels, datasets: [{ label, data: d, backgroundColor: color+"33",
-               borderColor: color, borderWidth: 2, borderRadius: 4 }] },
-      options: { responsive: true, plugins: { legend: { display: false } },
-        scales: { x: { ticks: { color: "#72767d" }, grid: { color: "#2e3354" } },
-                  y: { ticks: { color: "#72767d" }, grid: { color: "#2e3354" } } } }
+      data: { labels, datasets: [{ label, data: d, backgroundColor: color + "33", borderColor: color, borderWidth: 2, borderRadius: 4 }] },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#72767d" }, grid: { color: "#2e3354" } },
+          y: { ticks: { color: "#72767d" }, grid: { color: "#2e3354" } }
+        }
+      }
     });
 
     if (chartActivity) chartActivity.destroy();
     if (chartUsers)    chartUsers.destroy();
-    chartActivity = new Chart(document.getElementById("activityChart"), cfg("Godziny", "#5865f2", hours.map(h => +h.toFixed(1))));
-    chartUsers    = new Chart(document.getElementById("usersChart"),    cfg("Użytkownicy", "#57f287", users));
-  } catch(e) {
+    chartActivity = new Chart(document.getElementById("activityChart"), makeCfg("Godziny", "#5865f2", hours));
+    chartUsers    = new Chart(document.getElementById("usersChart"),    makeCfg("Użytkownicy", "#57f287", users));
+  } catch (e) {
     toast("Błąd ładowania wykresów", false);
   }
 }
 
 // ── Raporty ──────────────────────────────────────────────────────────────
 
-const REPORT_LABELS = { monthly:"📆 Miesięczny", quarterly:"📊 Kwartalny" };
-
 async function loadReports() {
   const tbody = document.getElementById("reports-body");
+  const LABELS = { monthly: "📆 Miesięczny", quarterly: "📊 Kwartalny" };
   try {
     const data = await apiFetch("/api/reports");
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="3" class="loading">Brak historii raportów.</td></tr>'; return;
+      tbody.innerHTML = '<tr><td colspan="3" class="loading">Brak historii raportów.</td></tr>';
+      return;
     }
     tbody.innerHTML = data.map(r => `
       <tr>
-        <td>${REPORT_LABELS[r.type] || r.type}</td>
+        <td>${LABELS[r.type] || r.type}</td>
         <td>${fmtDate(r.sent_at)}</td>
         <td>${r.entry_count ?? "–"}</td>
       </tr>
     `).join("");
-  } catch(e) { tbody.innerHTML = '<tr><td colspan="3" class="loading" style="color:var(--danger)">Błąd.</td></tr>'; }
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="3" class="loading" style="color:var(--danger)">Błąd.</td></tr>';
+  }
 }
 
 // ── Rangi ─────────────────────────────────────────────────────────────────
@@ -581,11 +373,10 @@ async function loadReports() {
 async function loadRoles() {
   const tbody = document.getElementById("roles-body");
   try {
-    const data = await apiFetch("/api/role-grants");
-
-    // Zlicz rangi
+    const data   = await apiFetch("/api/role-grants");
     const counts = {};
-    data.forEach(r => counts[r.role_name] = (counts[r.role_name]||0) + 1);
+    data.forEach(r => counts[r.role_name] = (counts[r.role_name] || 0) + 1);
+
     document.getElementById("cards-roles").innerHTML =
       Object.entries(counts).map(([name, cnt]) => `
         <div class="card">
@@ -593,10 +384,11 @@ async function loadRoles() {
           <div class="card-value yellow" style="font-size:1rem">${name}</div>
           <div style="color:var(--muted);font-size:.85rem;margin-top:6px">${cnt} razy łącznie</div>
         </div>
-      `).join("") || '<div class="card"><div class="card-label">Brak danych</div><div class="card-value muted">–</div></div>';
+      `).join("") || '<div class="card"><div class="card-label">Brak danych</div><div class="card-value" style="color:var(--muted)">–</div></div>';
 
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="loading">Nie nadano jeszcze żadnej rangi.</td></tr>'; return;
+      tbody.innerHTML = '<tr><td colspan="4" class="loading">Nie nadano jeszcze żadnej rangi.</td></tr>';
+      return;
     }
     tbody.innerHTML = data.map(r => `
       <tr>
@@ -606,7 +398,9 @@ async function loadRoles() {
         <td style="color:var(--muted);font-size:.85rem">${fmtDate(r.granted_at)}</td>
       </tr>
     `).join("");
-  } catch(e) { tbody.innerHTML = '<tr><td colspan="4" class="loading" style="color:var(--danger)">Błąd.</td></tr>'; }
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="4" class="loading" style="color:var(--danger)">Błąd.</td></tr>';
+  }
 }
 
 // ── Nieaktywni ────────────────────────────────────────────────────────────
@@ -619,64 +413,18 @@ async function loadInactive() {
       <div class="card"><div class="card-label">Nieaktywnych członków</div><div class="card-value pink">${data.length}</div></div>
     `;
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="3" class="loading">Wszyscy członkowie byli aktywni! 🎉</td></tr>'; return;
+      tbody.innerHTML = '<tr><td colspan="3" class="loading">Wszyscy członkowie byli aktywni! 🎉</td></tr>';
+      return;
     }
-    tbody.innerHTML = data.map((r,i) => `
+    tbody.innerHTML = data.map((r, i) => `
       <tr>
-        <td style="color:var(--muted)">${i+1}.</td>
+        <td style="color:var(--muted)">${i + 1}.</td>
         <td>${r.display_name}</td>
         <td style="color:var(--muted);font-size:.85rem">${r.joined_at ? new Date(r.joined_at).toLocaleDateString("pl-PL") : "–"}</td>
       </tr>
     `).join("");
-  } catch(e) { tbody.innerHTML = '<tr><td colspan="3" class="loading" style="color:var(--danger)">Błąd.</td></tr>'; }
-}
-
-// ── Akcje ─────────────────────────────────────────────────────────────────
-
-async function loadActions() {
-  const tbody = document.getElementById("online-body");
-  try {
-    const data = await apiFetch("/api/online");
-    document.getElementById("cards-online").innerHTML = `
-      <div class="card"><div class="card-label">Na kanałach teraz</div><div class="card-value green">${data.length}</div></div>
-    `;
-    if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="3" class="loading">Nikt nie jest teraz na kanale głosowym.</td></tr>'; return;
-    }
-    tbody.innerHTML = data.map(r => `
-      <tr>
-        <td><span class="online-dot"></span>${r.display_name}${r.is_special ? " 🎉" : ""}</td>
-        <td style="color:var(--muted)">#${r.channel_name}</td>
-        <td><span class="time-badge">${fmtOnline(r.elapsed_s)}</span></td>
-      </tr>
-    `).join("");
-  } catch(e) { tbody.innerHTML = '<tr><td colspan="3" class="loading" style="color:var(--danger)">Błąd.</td></tr>'; }
-  // Odświeżaj online co 30s
-  setTimeout(() => { if (document.getElementById("page-actions").classList.contains("active")) loadActions(); }, 30000);
-}
-
-async function doAction(action) {
-  const btns = document.querySelectorAll(".btn");
-  btns.forEach(b => b.disabled = true);
-  const el = document.getElementById("action-result");
-  el.style.display = "none";
-  try {
-    const res = await fetch("/api/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action })
-    });
-    const data = await res.json();
-    el.style.display = "block";
-    el.style.background  = data.ok ? "rgba(87,242,135,.1)"  : "rgba(237,66,69,.1)";
-    el.style.borderLeft  = `3px solid ${data.ok ? "var(--accent2)" : "var(--danger)"}`;
-    el.style.color       = data.ok ? "var(--accent2)" : "var(--danger)";
-    el.textContent       = data.message;
-    toast(data.message, data.ok);
-  } catch(e) {
-    toast("Błąd połączenia z botem", false);
-  } finally {
-    btns.forEach(b => b.disabled = false);
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="3" class="loading" style="color:var(--danger)">Błąd.</td></tr>';
   }
 }
 </script>
