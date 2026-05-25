@@ -26,24 +26,14 @@ ROLE_PISKLAK_ID   = int(os.getenv("ROLE_PISKLAK_ID", "0"))
 ROLE_OPIERZONY_ID = int(os.getenv("ROLE_OPIERZONY_ID", "0"))
 ROLE_BROJLER_ID   = int(os.getenv("ROLE_BROJLER_ID", "0"))
 
-RULES_MESSAGE_ID  = int(os.getenv("RULES_MESSAGE_ID", "0"))
-RULES_CHANNEL_ID  = int(os.getenv("RULES_CHANNEL_ID", "0"))
-VERIFIED_ROLE_ID  = int(os.getenv("VERIFIED_ROLE_ID", "0"))
-
 DASHBOARD_SECRET  = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
 DASHBOARD_PORT    = int(os.getenv("PORT", "8080"))
 
 # ── Ustawienia stałe ─────────────────────────────────────────────────────────
-RULES_REACTION      = os.getenv("RULES_REACTION", "👍")
-KICK_AFTER_HOURS    = 48
 THRESHOLD_OPIERZONY = 48   # godziny
 THRESHOLD_BROJLER   = 96   # godziny
-MSG_VERIFIED        = "✅ Witaj na serwerze! Zaakceptowałeś/aś regulamin i masz teraz pełny dostęp. Miłej zabawy! 🎉"
-MSG_KICK            = "👋 Zostałeś/aś usunięty/a z serwera, ponieważ nie zaakceptowałeś/aś regulaminu w ciągu {hours} godzin. Możesz dołączyć ponownie i zaakceptować regulamin."
 MSG_OPIERZONY       = "🐦 **{mention}** właśnie awansował(a) na **{role}**!\nSkrzydła już nie takie miękkie – ponad **{hours}h** na kanałach! Tak trzymać, niepohamowany gadaczku! 🎊"
 MSG_BROJLER         = "🏆 **{mention}** osiągnął(a) **{role}**!\nŁącznie ponad **{hours}h** na kanałach głosowych – to jest prawdziwe poświęcenie! Gratulacje, legendo! 🎉"
-
-pending_verification: dict[int, datetime] = {}
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -78,56 +68,8 @@ async def on_ready():
     monthly_report_task.start()
     quarterly_report_task.start()
     role_updater.start()
-    verification_checker.start()
 
-    if VERIFIED_ROLE_ID != 0:
-        for guild in bot.guilds:
-            verified_role = guild.get_role(VERIFIED_ROLE_ID)
-            for member in guild.members:
-                if member.bot:
-                    continue
-                if verified_role and verified_role in member.roles:
-                    continue
-                if member.joined_at:
-                    pending_verification[member.id] = member.joined_at.replace(tzinfo=None)
-        print(f"📋  Załadowano {len(pending_verification)} osób oczekujących na weryfikację.")
     print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
-
-@bot.event
-async def on_member_join(member: discord.Member):
-    if member.bot or VERIFIED_ROLE_ID == 0:
-        return
-    pending_verification[member.id] = datetime.utcnow()
-
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    if RULES_MESSAGE_ID == 0 or VERIFIED_ROLE_ID == 0:
-        return
-    if payload.message_id != RULES_MESSAGE_ID:
-        return
-    if payload.user_id == bot.user.id:
-        return
-
-    guild  = bot.get_guild(payload.guild_id)
-    if not guild:
-        return
-    member = guild.get_member(payload.user_id)
-    if not member or member.bot:
-        return
-
-    verified_role = guild.get_role(VERIFIED_ROLE_ID)
-    if not verified_role or verified_role in member.roles:
-        return
-
-    try:
-        await member.add_roles(verified_role, reason="Akceptacja regulaminu")
-        pending_verification.pop(member.id, None)
-        try:
-            await member.send(MSG_VERIFIED)
-        except discord.Forbidden:
-            pass
-    except discord.Forbidden:
-        pass
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -154,29 +96,6 @@ async def quarterly_report_task():
     now = datetime.now(LOCAL_TZ)
     if now.month in (1, 4, 7, 10) and now.day == 1 and now.hour == 10 and now.minute == 0:
         await _send_quarterly_report()
-
-@tasks.loop(hours=1)
-async def verification_checker():
-    if VERIFIED_ROLE_ID == 0:
-        return
-    now     = datetime.utcnow()
-    to_kick = [uid for uid, jt in list(pending_verification.items())
-               if (now - jt.replace(tzinfo=None)).total_seconds() / 3600 >= KICK_AFTER_HOURS]
-    for guild in bot.guilds:
-        for user_id in to_kick:
-            member = guild.get_member(user_id)
-            if not member:
-                pending_verification.pop(user_id, None)
-                continue
-            try:
-                await member.send(MSG_KICK.format(hours=KICK_AFTER_HOURS))
-            except discord.Forbidden:
-                pass
-            try:
-                await member.kick(reason=f"Brak akceptacji regulaminu w ciągu {KICK_AFTER_HOURS}h")
-                pending_verification.pop(user_id, None)
-            except discord.Forbidden:
-                pass
 
 @tasks.loop(hours=1)
 async def role_updater():
