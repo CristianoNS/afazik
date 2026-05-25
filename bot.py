@@ -12,7 +12,7 @@ from database import Database
 from tracker import VoiceTracker
 from stats import StatsFormatter
 
-# ── Konfiguracja ──────────────────────────────────────────────────────────────
+# ── Konfiguracja środowiskowa (stała, nie edytowalna z dashboardu) ─────────────
 TOKEN              = os.getenv("DISCORD_TOKEN")
 PREFIX             = os.getenv("COMMAND_PREFIX", "!")
 SPECIAL_CHANNEL_ID = int(os.getenv("SPECIAL_CHANNEL_ID", "0"))
@@ -22,29 +22,51 @@ STATS_ROLE_ID      = int(os.getenv("STATS_ROLE_ID", "0"))
 TZ_NAME            = os.getenv("TIMEZONE", "Europe/Warsaw")
 LOCAL_TZ           = ZoneInfo(TZ_NAME)
 
-# Rangi
 ROLE_PISKLAK_ID   = int(os.getenv("ROLE_PISKLAK_ID", "0"))
 ROLE_OPIERZONY_ID = int(os.getenv("ROLE_OPIERZONY_ID", "0"))
 ROLE_BROJLER_ID   = int(os.getenv("ROLE_BROJLER_ID", "0"))
 
-THRESHOLD_48H = 48 * 3600
-THRESHOLD_96H = 96 * 3600
+RULES_MESSAGE_ID  = int(os.getenv("RULES_MESSAGE_ID", "0"))
+RULES_CHANNEL_ID  = int(os.getenv("RULES_CHANNEL_ID", "0"))
+VERIFIED_ROLE_ID  = int(os.getenv("VERIFIED_ROLE_ID", "0"))
 
-# Dashboard HTTP
-DASHBOARD_SECRET = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
-DASHBOARD_PORT   = int(os.getenv("PORT", "8080"))
+DASHBOARD_SECRET  = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
+DASHBOARD_PORT    = int(os.getenv("PORT", "8080"))
+
+# Ustawienia edytowalne z dashboardu – domyślne wartości (nadpisywane z bazy po starcie)
+cfg = {
+    "rules_reaction":       os.getenv("RULES_REACTION", "👍"),
+    "kick_after_hours":     48,
+    "threshold_opierzony":  48,
+    "threshold_brojler":    96,
+    "msg_verified":         "✅ Witaj na serwerze! Zaakceptowałeś/aś regulamin i masz teraz pełny dostęp. Miłej zabawy! 🎉",
+    "msg_kick":             "👋 Zostałeś/aś usunięty/a z serwera, ponieważ nie zaakceptowałeś/aś regulaminu w ciągu {hours} godzin. Możesz dołączyć ponownie i zaakceptować regulamin.",
+    "msg_opierzony":        "🐦 **{mention}** właśnie awansował(a) na **{role}**!\nSkrzydła już nie takie miękkie – ponad **{hours}h** na kanałach! Tak trzymać, niepohamowany gadaczku! 🎊",
+    "msg_brojler":          "🏆 **{mention}** osiągnął(a) **{role}**!\nŁącznie ponad **{hours}h** na kanałach głosowych – to jest prawdziwe poświęcenie! Gratulacje, legendo! 🎉",
+    "cmd_prefix":           PREFIX,
+}
+
+pending_verification: dict[int, datetime] = {}
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states    = True
 intents.members         = True
 
-bot = commands.Bot(command_prefix=PREFIX, intents=intents)
+bot = commands.Bot(command_prefix=lambda b, m: cfg["cmd_prefix"], intents=intents)
 bot.remove_command("help")
 
 db      = Database()
 tracker = VoiceTracker(db, SPECIAL_CHANNEL_ID)
 fmt     = StatsFormatter()
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def threshold_opierzony_s() -> int:
+    return int(cfg["threshold_opierzony"]) * 3600
+
+def threshold_brojler_s() -> int:
+    return int(cfg["threshold_brojler"]) * 3600
 
 # ── Dekorator uprawnień ───────────────────────────────────────────────────────
 
@@ -62,14 +84,70 @@ def has_stats_role():
 @bot.event
 async def on_ready():
     print(f"✅  Zalogowano jako {bot.user} ({bot.user.id})")
-    print(f"📊  Baza: {db.db_url[:40]}...")
     await db.init()
+    # Załaduj ustawienia z bazy
+    saved = await db.get_all_settings()
+    for key, value in saved.items():
+        if key in cfg:
+            cfg[key] = value
+    print(f"⚙️   Załadowano {len(saved)} ustawień z bazy.")
+
     save_sessions.start()
     monthly_report_task.start()
     quarterly_report_task.start()
     role_updater.start()
-    print(f"⏱️   Tracker uruchomiony. Strefa: {TZ_NAME}")
-    print(f"🌐  Dashboard HTTP nasłuchuje na porcie {DASHBOARD_PORT}")
+    verification_checker.start()
+
+    if VERIFIED_ROLE_ID != 0:
+        for guild in bot.guilds:
+            verified_role = guild.get_role(VERIFIED_ROLE_ID)
+            for member in guild.members:
+                if member.bot:
+                    continue
+                if verified_role and verified_role in member.roles:
+                    continue
+                if member.joined_at:
+                    pending_verification[member.id] = member.joined_at.replace(tzinfo=None)
+        print(f"📋  Załadowano {len(pending_verification)} osób oczekujących na weryfikację.")
+    print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    if member.bot or VERIFIED_ROLE_ID == 0:
+        return
+    pending_verification[member.id] = datetime.utcnow()
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    if RULES_MESSAGE_ID == 0 or VERIFIED_ROLE_ID == 0:
+        return
+    if payload.message_id != RULES_MESSAGE_ID:
+        return
+    if str(payload.emoji) != cfg["rules_reaction"]:
+        return
+    if payload.user_id == bot.user.id:
+        return
+
+    guild  = bot.get_guild(payload.guild_id)
+    if not guild:
+        return
+    member = guild.get_member(payload.user_id)
+    if not member or member.bot:
+        return
+
+    verified_role = guild.get_role(VERIFIED_ROLE_ID)
+    if not verified_role or verified_role in member.roles:
+        return
+
+    try:
+        await member.add_roles(verified_role, reason="Akceptacja regulaminu")
+        pending_verification.pop(member.id, None)
+        try:
+            await member.send(cfg["msg_verified"])
+        except discord.Forbidden:
+            pass
+    except discord.Forbidden:
+        pass
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -98,6 +176,29 @@ async def quarterly_report_task():
         await _send_quarterly_report()
 
 @tasks.loop(hours=1)
+async def verification_checker():
+    if VERIFIED_ROLE_ID == 0:
+        return
+    now     = datetime.utcnow()
+    to_kick = [uid for uid, jt in list(pending_verification.items())
+               if (now - jt.replace(tzinfo=None)).total_seconds() / 3600 >= int(cfg["kick_after_hours"])]
+    for guild in bot.guilds:
+        for user_id in to_kick:
+            member = guild.get_member(user_id)
+            if not member:
+                pending_verification.pop(user_id, None)
+                continue
+            try:
+                await member.send(cfg["msg_kick"].format(hours=cfg["kick_after_hours"]))
+            except discord.Forbidden:
+                pass
+            try:
+                await member.kick(reason=f"Brak akceptacji regulaminu w ciągu {cfg['kick_after_hours']}h")
+                pending_verification.pop(user_id, None)
+            except discord.Forbidden:
+                pass
+
+@tasks.loop(hours=1)
 async def role_updater():
     for guild in bot.guilds:
         await _update_activity_roles(guild, announce=True)
@@ -123,7 +224,6 @@ async def _send_monthly_report():
     embed.set_footer(text="Automatyczny raport – 1. dzień każdego miesiąca o 10:00")
     await ch.send(embed=embed)
     await db.log_report("monthly", len(rows))
-    print("📨  Wysłano raport miesięczny.")
 
 async def _send_quarterly_report():
     ch = await _get_report_channel()
@@ -134,7 +234,6 @@ async def _send_quarterly_report():
     q_label = f"Q{quarter} {now.year}" if quarter > 0 else f"Q4 {now.year - 1}"
     rows    = await db.get_stats(period="quarter")
     embed   = fmt.build_embed(rows, f"📊 Raport kwartalny – {q_label}", discord.Color.orange())
-
     inactive = await _get_inactive_members()
     if inactive:
         lines, chunk, chunks = [], [], []
@@ -152,11 +251,9 @@ async def _send_quarterly_report():
                             value=text, inline=False)
     else:
         embed.add_field(name="😴 Nieaktywni", value="Wszyscy członkowie byli aktywni – brawo!", inline=False)
-
-    embed.set_footer(text="Automatyczny raport kwartalny – 1 sty/kwi/lip/paź o 10:00")
+    embed.set_footer(text="Automatyczny raport kwartalny")
     await ch.send(embed=embed)
     await db.log_report("quarterly", len(rows))
-    print("📨  Wysłano raport kwartalny.")
 
 async def _get_inactive_members() -> list[discord.Member]:
     active_ids = await db.get_all_voice_user_ids()
@@ -188,32 +285,32 @@ async def _apply_roles(member: discord.Member, total_seconds: int, announce_ch):
     role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
     role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
     try:
-        if total_seconds >= THRESHOLD_96H and role_brojler:
+        if total_seconds >= threshold_brojler_s() and role_brojler:
             if role_brojler not in member.roles:
-                await member.add_roles(role_brojler, reason="Voice tracker – 96h")
+                await member.add_roles(role_brojler, reason="Voice tracker – próg BROJLER")
                 await db.log_role_grant(member.id, member.display_name, "BROJLER", total_seconds)
                 if announce_ch:
-                    await announce_ch.send(
-                        f"🏆 **{member.mention}** osiągnął(a) **{role_brojler.name}**!\n"
-                        f"Łącznie ponad **96 godzin** na kanałach głosowych – "
-                        f"to jest prawdziwe poświęcenie! Gratulacje, legendo! 🎉"
-                    )
+                    await announce_ch.send(cfg["msg_brojler"].format(
+                        mention=member.mention,
+                        role=role_brojler.name,
+                        hours=cfg["threshold_brojler"]
+                    ))
             for r in [role_opierzony, role_pisklak]:
                 if r and r in member.roles:
-                    await member.remove_roles(r, reason="Voice tracker – awans na 96h")
+                    await member.remove_roles(r, reason="Awans na BROJLER")
 
-        elif total_seconds >= THRESHOLD_48H and role_opierzony:
+        elif total_seconds >= threshold_opierzony_s() and role_opierzony:
             if role_opierzony not in member.roles:
-                await member.add_roles(role_opierzony, reason="Voice tracker – 48h")
+                await member.add_roles(role_opierzony, reason="Voice tracker – próg OPIERZONY")
                 await db.log_role_grant(member.id, member.display_name, "OPIERZONY", total_seconds)
                 if announce_ch:
-                    await announce_ch.send(
-                        f"🐦 **{member.mention}** właśnie awansował(a) na **{role_opierzony.name}**!\n"
-                        f"Skrzydła już nie takie miękkie – ponad **48 godzin** na kanałach! "
-                        f"Tak trzymać, niepohamowany gadaczku! 🎊"
-                    )
+                    await announce_ch.send(cfg["msg_opierzony"].format(
+                        mention=member.mention,
+                        role=role_opierzony.name,
+                        hours=cfg["threshold_opierzony"]
+                    ))
             if role_pisklak and role_pisklak in member.roles:
-                await member.remove_roles(role_pisklak, reason="Voice tracker – awans na OPIERZONY")
+                await member.remove_roles(role_pisklak, reason="Awans na OPIERZONY")
 
     except discord.Forbidden:
         pass
@@ -270,23 +367,17 @@ async def stats_user(ctx, *, member: discord.Member = None):
 @commands.has_permissions(administrator=True)
 async def test_all(ctx):
     await ctx.send("🧪 Uruchamiam test wszystkich procesów...")
-    await ctx.send("📆 Wysyłam testowy raport miesięczny...")
     await _send_monthly_report()
-    await ctx.send("📊 Wysyłam testowy raport kwartalny...")
     await _send_quarterly_report()
     TEST_USER_ID = 1505984621408551053
-    await ctx.send(f"🎖️ Sprawdzam rangi dla <@{TEST_USER_ID}>...")
     for guild in bot.guilds:
         member = guild.get_member(TEST_USER_ID)
         if member:
             rows         = await db.get_stats(period="alltime")
             user_seconds = {r["user_id"]: int(r["total_seconds"] or 0) for r in rows}
             total        = user_seconds.get(TEST_USER_ID, 0)
-            await ctx.send(f"ℹ️ **{member.display_name}** ma `{total//3600}h` łącznie.")
             await _apply_roles(member, total, bot.get_channel(ROLE_ANNOUNCE_ID) if ROLE_ANNOUNCE_ID else None)
             await ctx.send(f"✅ Role dla **{member.display_name}** zaktualizowane.")
-        else:
-            await ctx.send(f"⚠️ Nie znalazłem użytkownika `{TEST_USER_ID}`.")
     await ctx.send("✅ Test zakończony.")
 
 @bot.command(name="pomoc", aliases=["help"])
@@ -322,76 +413,85 @@ async def on_command_error(ctx, error):
 # ── HTTP API dla dashboardu ───────────────────────────────────────────────────
 
 def _auth(request: web.Request) -> bool:
-    """Sprawdza nagłówek Authorization: Bearer <DASHBOARD_SECRET>"""
-    auth = request.headers.get("Authorization", "")
-    return auth == f"Bearer {DASHBOARD_SECRET}"
+    return request.headers.get("Authorization", "") == f"Bearer {DASHBOARD_SECRET}"
 
 def _json(data) -> web.Response:
-    return web.Response(
-        text=json.dumps(data, ensure_ascii=False, default=str),
-        content_type="application/json"
-    )
+    return web.Response(text=json.dumps(data, ensure_ascii=False, default=str),
+                        content_type="application/json")
 
-async def api_stats(request: web.Request) -> web.Response:
-    if not _auth(request):
-        return web.Response(status=401)
-    period = request.match_info.get("period", "week")
-    rows   = await db.get_stats(period=period)
-    return _json(rows)
+async def api_stats(request):
+    if not _auth(request): return web.Response(status=401)
+    return _json(await db.get_stats(period=request.match_info.get("period", "week")))
 
-async def api_special(request: web.Request) -> web.Response:
-    if not _auth(request):
-        return web.Response(status=401)
-    rows = await db.get_special_stats()
-    return _json(rows)
+async def api_special(request):
+    if not _auth(request): return web.Response(status=401)
+    return _json(await db.get_special_stats())
 
-async def api_online(request: web.Request) -> web.Response:
-    if not _auth(request):
-        return web.Response(status=401)
-    now    = datetime.utcnow()
-    result = []
-    for uid, session in tracker.active.items():
-        elapsed = int((now - session["joined"]).total_seconds())
-        result.append({
-            "user_id":      uid,
-            "display_name": session["display_name"],
-            "channel_name": session["channel_name"],
-            "elapsed_s":    elapsed,
-            "is_special":   session.get("is_special", False),
-        })
-    return _json(result)
+async def api_online(request):
+    if not _auth(request): return web.Response(status=401)
+    now = datetime.utcnow()
+    return _json([{
+        "user_id": uid, "display_name": s["display_name"],
+        "channel_name": s["channel_name"],
+        "elapsed_s": int((now - s["joined"]).total_seconds()),
+        "is_special": s.get("is_special", False),
+    } for uid, s in tracker.active.items()])
 
-async def api_reports(request: web.Request) -> web.Response:
-    if not _auth(request):
-        return web.Response(status=401)
-    rows = await db.get_report_log()
-    return _json(rows)
+async def api_reports(request):
+    if not _auth(request): return web.Response(status=401)
+    return _json(await db.get_report_log())
 
-async def api_inactive(request: web.Request) -> web.Response:
-    if not _auth(request):
-        return web.Response(status=401)
+async def api_inactive(request):
+    if not _auth(request): return web.Response(status=401)
     members = await _get_inactive_members()
-    result  = [{"display_name": m.display_name,
-                "joined_at":    m.joined_at.isoformat() if m.joined_at else None}
-               for m in members]
-    return _json(result)
+    return _json([{"display_name": m.display_name,
+                   "joined_at": m.joined_at.isoformat() if m.joined_at else None}
+                  for m in members])
 
-async def api_role_grants(request: web.Request) -> web.Response:
-    if not _auth(request):
-        return web.Response(status=401)
-    rows = await db.get_role_grants()
-    return _json(rows)
+async def api_role_grants(request):
+    if not _auth(request): return web.Response(status=401)
+    return _json(await db.get_role_grants())
 
-async def api_activity_chart(request: web.Request) -> web.Response:
-    if not _auth(request):
-        return web.Response(status=401)
-    rows = await db.get_daily_activity(days=30)
-    return _json(rows)
+async def api_activity_chart(request):
+    if not _auth(request): return web.Response(status=401)
+    return _json(await db.get_daily_activity(days=30))
 
-async def api_action(request: web.Request) -> web.Response:
-    """POST /api/action  body: {"action": "monthly_report"|"quarterly_report"|"update_roles"}"""
-    if not _auth(request):
-        return web.Response(status=401)
+async def api_get_settings(request):
+    if not _auth(request): return web.Response(status=401)
+    return _json(cfg)
+
+async def api_save_settings(request):
+    """POST /api/settings – zapisuje ustawienia do bazy i aktualizuje cfg w locie."""
+    if not _auth(request): return web.Response(status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.Response(status=400)
+
+    ALLOWED_KEYS = {
+        "rules_reaction", "kick_after_hours", "threshold_opierzony", "threshold_brojler",
+        "msg_verified", "msg_kick", "msg_opierzony", "msg_brojler", "cmd_prefix",
+    }
+    updated = {}
+    for key, value in body.items():
+        if key not in ALLOWED_KEYS:
+            continue
+        # Walidacja typów liczbowych
+        if key in ("kick_after_hours", "threshold_opierzony", "threshold_brojler"):
+            try:
+                value = int(value)
+                if value < 1:
+                    continue
+            except (ValueError, TypeError):
+                continue
+        cfg[key] = value
+        updated[key] = value
+
+    await db.save_settings(updated)
+    return _json({"ok": True, "updated": list(updated.keys())})
+
+async def api_action(request):
+    if not _auth(request): return web.Response(status=401)
     try:
         body   = await request.json()
         action = body.get("action", "")
@@ -410,26 +510,25 @@ async def api_action(request: web.Request) -> web.Response:
                 await _update_activity_roles(guild, announce=True)
         asyncio.create_task(_run())
         return _json({"ok": True, "message": "Przeliczanie rang rozpoczęte..."})
-    else:
-        return _json({"ok": False, "message": f"Nieznana akcja: {action}"})
+    return _json({"ok": False, "message": f"Nieznana akcja: {action}"})
 
-async def api_health(request: web.Request) -> web.Response:
+async def api_health(request):
     return _json({"status": "ok", "bot": str(bot.user)})
 
 def build_app() -> web.Application:
     app = web.Application()
-    app.router.add_get("/api/health",              api_health)
-    app.router.add_get("/api/stats/{period}",      api_stats)
-    app.router.add_get("/api/special",             api_special)
-    app.router.add_get("/api/online",              api_online)
-    app.router.add_get("/api/reports",             api_reports)
-    app.router.add_get("/api/inactive",            api_inactive)
-    app.router.add_get("/api/role-grants",         api_role_grants)
-    app.router.add_get("/api/activity-chart",      api_activity_chart)
-    app.router.add_post("/api/action",             api_action)
+    app.router.add_get("/api/health",          api_health)
+    app.router.add_get("/api/stats/{period}",  api_stats)
+    app.router.add_get("/api/special",         api_special)
+    app.router.add_get("/api/online",          api_online)
+    app.router.add_get("/api/reports",         api_reports)
+    app.router.add_get("/api/inactive",        api_inactive)
+    app.router.add_get("/api/role-grants",     api_role_grants)
+    app.router.add_get("/api/activity-chart",  api_activity_chart)
+    app.router.add_get("/api/settings",        api_get_settings)
+    app.router.add_post("/api/settings",       api_save_settings)
+    app.router.add_post("/api/action",         api_action)
     return app
-
-# ── Start – bot + HTTP równolegle ─────────────────────────────────────────────
 
 async def main():
     app    = build_app()
