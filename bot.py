@@ -326,16 +326,6 @@ async def api_special(request):
     if not _auth(request): return web.Response(status=401)
     return _json(await db.get_special_stats())
 
-async def api_online(request):
-    if not _auth(request): return web.Response(status=401)
-    now = datetime.utcnow()
-    return _json([{
-        "user_id": uid, "display_name": s["display_name"],
-        "channel_name": s["channel_name"],
-        "elapsed_s": int((now - s["joined"]).total_seconds()),
-        "is_special": s.get("is_special", False),
-    } for uid, s in tracker.active.items()])
-
 async def api_reports(request):
     if not _auth(request): return web.Response(status=401)
     return _json(await db.get_report_log())
@@ -355,22 +345,6 @@ async def api_activity_chart(request):
     if not _auth(request): return web.Response(status=401)
     return _json(await db.get_daily_activity(days=30))
 
-async def api_action(request):
-    if not _auth(request): return web.Response(status=401)
-    try:
-        body   = await request.json()
-        action = body.get("action", "")
-    except Exception:
-        return web.Response(status=400)
-
-    if action == "monthly_report":
-        asyncio.create_task(_send_monthly_report())
-        return _json({"ok": True, "message": "Raport miesięczny wysyłany..."})
-    elif action == "quarterly_report":
-        asyncio.create_task(_send_quarterly_report())
-        return _json({"ok": True, "message": "Raport kwartalny wysyłany..."})
-    return _json({"ok": False, "message": f"Nieznana akcja: {action}"})
-
 async def api_health(request):
     return _json({"status": "ok", "bot": str(bot.user)})
 
@@ -379,12 +353,10 @@ def build_app() -> web.Application:
     app.router.add_get("/api/health",          api_health)
     app.router.add_get("/api/stats/{period}",  api_stats)
     app.router.add_get("/api/special",         api_special)
-    app.router.add_get("/api/online",          api_online)
     app.router.add_get("/api/reports",         api_reports)
     app.router.add_get("/api/inactive",        api_inactive)
     app.router.add_get("/api/role-grants",     api_role_grants)
     app.router.add_get("/api/activity-chart",  api_activity_chart)
-    app.router.add_post("/api/action",         api_action)
     return app
 
 async def main():
