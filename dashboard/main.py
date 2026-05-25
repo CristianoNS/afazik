@@ -160,6 +160,17 @@ async def api_activity_chart(request: Request):
     require_auth(request)
     return await bot_get("/api/activity-chart")
 
+@app.get("/api/settings")
+async def api_settings_get(request: Request):
+    require_auth(request)
+    return await bot_get("/api/settings")
+
+@app.post("/api/settings")
+async def api_settings_save(request: Request):
+    require_auth(request)
+    body = await request.json()
+    return await bot_post("/api/settings", body)
+
 @app.post("/api/action")
 async def api_action(request: Request):
     require_auth(request)
