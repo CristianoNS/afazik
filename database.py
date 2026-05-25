@@ -40,12 +40,6 @@ class Database:
                     entry_count INTEGER
                 );
 
-                CREATE TABLE IF NOT EXISTS bot_settings (
-                    key        TEXT PRIMARY KEY,
-                    value      TEXT NOT NULL,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                );
-
                 CREATE TABLE IF NOT EXISTS role_grants (
                     id           BIGSERIAL PRIMARY KEY,
                     user_id      BIGINT      NOT NULL,
@@ -186,29 +180,6 @@ class Database:
                 INSERT INTO role_grants (user_id, display_name, role_name, total_seconds)
                 VALUES ($1,$2,$3,$4)
             """, user_id, display_name, role_name, total_seconds)
-
-    async def get_all_settings(self) -> dict:
-        """Zwraca wszystkie ustawienia z bazy jako słownik."""
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch("SELECT key, value FROM bot_settings")
-            result = {}
-            for r in rows:
-                # Spróbuj sparsować jako int, jeśli nie – zostaw string
-                try:
-                    result[r["key"]] = int(r["value"])
-                except (ValueError, TypeError):
-                    result[r["key"]] = r["value"]
-            return result
-
-    async def save_settings(self, settings: dict):
-        """Zapisuje słownik ustawień do bazy (upsert)."""
-        async with self.pool.acquire() as conn:
-            for key, value in settings.items():
-                await conn.execute("""
-                    INSERT INTO bot_settings (key, value, updated_at)
-                    VALUES ($1, $2, NOW())
-                    ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=NOW()
-                """, key, str(value))
 
     async def get_role_grants(self) -> list[dict]:
         async with self.pool.acquire() as conn:
