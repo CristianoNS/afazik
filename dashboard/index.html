@@ -3,8 +3,84 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Afazik Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<title>Voice Tracker Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js">
+// ── Ustawienia ────────────────────────────────────────────────────────────
+
+async function loadSettings() {
+  const status = document.getElementById("settings-status");
+  status.textContent = "Ładowanie...";
+  status.style.color = "var(--muted)";
+  try {
+    const data = await apiFetch("/api/settings");
+    const fields = [
+      "rules_reaction", "kick_after_hours", "threshold_opierzony", "threshold_brojler",
+      "msg_verified", "msg_kick", "msg_opierzony", "msg_brojler", "cmd_prefix"
+    ];
+    fields.forEach(key => {
+      const el = document.getElementById("s-" + key);
+      if (el && data[key] !== undefined) el.value = data[key];
+    });
+    status.textContent = "✓ Załadowano";
+    status.style.color = "var(--accent2)";
+    setTimeout(() => status.textContent = "", 3000);
+  } catch(e) {
+    status.textContent = "Błąd ładowania";
+    status.style.color = "var(--danger)";
+  }
+}
+
+async function saveSettings() {
+  const btn    = document.getElementById("save-btn");
+  const status = document.getElementById("settings-status");
+  btn.disabled = true;
+  status.textContent = "Zapisywanie...";
+  status.style.color = "var(--muted)";
+
+  const fields = [
+    "rules_reaction", "kick_after_hours", "threshold_opierzony", "threshold_brojler",
+    "msg_verified", "msg_kick", "msg_opierzony", "msg_brojler", "cmd_prefix"
+  ];
+  const body = {};
+  fields.forEach(key => {
+    const el = document.getElementById("s-" + key);
+    if (el) body[key] = el.value;
+  });
+
+  try {
+    const res  = await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.ok) {
+      status.textContent = `✓ Zapisano (${data.updated.length} ustawień)`;
+      status.style.color = "var(--accent2)";
+      toast("Ustawienia zapisane!", true);
+    } else {
+      throw new Error(data.message || "Błąd");
+    }
+  } catch(e) {
+    status.textContent = "Błąd zapisu";
+    status.style.color = "var(--danger)";
+    toast("Błąd zapisu ustawień", false);
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => status.textContent = "", 4000);
+  }
+}
+
+// Ładuj ustawienia gdy przechodzisz do zakładki
+document.querySelectorAll(".nav-item").forEach(item => {
+  item.addEventListener("click", () => {
+    if (item.dataset.page === "settings" && !pageLoaded["settings"]) {
+      loadSettings();
+    }
+  });
+});
+
+</script>
 <style>
   :root {
     --bg:       #0f1117;
@@ -98,6 +174,22 @@
   .role-OPIERZONY { background: rgba(87,242,135,.15); color: var(--accent2); }
   .role-BROJLER   { background: rgba(254,231,92,.15); color: var(--accent3); }
 
+  /* ── Ustawienia ── */
+  .setting-row { margin-bottom: 20px; }
+  .setting-row label { display: block; font-size: .85rem; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .setting-row input[type="text"],
+  .setting-row input[type="number"],
+  .setting-row textarea {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: .9rem;
+    font-family: inherit; transition: border-color .15s; resize: vertical;
+  }
+  .setting-row input:focus,
+  .setting-row textarea:focus { outline: none; border-color: var(--accent); }
+  .setting-row input[type="number"] { width: 140px; }
+  .setting-row .setting-hint { display: block; font-size: .78rem; color: var(--muted); margin-top: 5px; }
+  .setting-row code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .78rem; color: var(--accent3); }
+
   /* ── Loading ── */
   .loading { color: var(--muted); padding: 40px; text-align: center; font-size: 0.9rem; }
 
@@ -114,7 +206,7 @@
 
   <!-- ── Sidebar ── -->
   <aside class="sidebar">
-    <div class="sidebar-logo"><span>🎙️</span> Afazik</div>
+    <div class="sidebar-logo"><span>🎙️</span> Voice Tracker</div>
     <nav>
       <div class="nav-item active" data-page="rankings"><span class="icon">📊</span> Rankingi</div>
       <div class="nav-item" data-page="chart"><span class="icon">📈</span> Wykresy</div>
@@ -122,6 +214,7 @@
       <div class="nav-item" data-page="roles"><span class="icon">🎖️</span> Rangi</div>
       <div class="nav-item" data-page="inactive"><span class="icon">😴</span> Nieaktywni</div>
       <div class="nav-item" data-page="actions"><span class="icon">⚡</span> Akcje</div>
+      <div class="nav-item" data-page="settings"><span class="icon">⚙️</span> Ustawienia</div>
     </nav>
     <div class="sidebar-footer">
       <button class="logout-btn" onclick="location='/logout'">Wyloguj się</button>
@@ -232,6 +325,74 @@
           <button class="btn btn-primary" onclick="doAction('update_roles')">🎖️ Przelicz rangi</button>
         </div>
         <div id="action-result" style="display:none;margin-top:16px;padding:12px 16px;border-radius:8px;font-size:.9rem"></div>
+      </div>
+    </div>
+
+    <!-- Ustawienia -->
+    <div class="page" id="page-settings">
+      <div class="page-title">⚙️ Ustawienia bota</div>
+
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px">
+        <h3 style="margin-bottom:20px;font-size:1rem;color:var(--accent)">🛡️ Weryfikacja regulaminu</h3>
+        <div class="setting-row">
+          <label>Emoji akceptacji regulaminu</label>
+          <input type="text" id="s-rules_reaction" placeholder="np. 👍 lub ✅" maxlength="10">
+          <span class="setting-hint">Emoji które user musi kliknąć pod wiadomością z regulaminem</span>
+        </div>
+        <div class="setting-row">
+          <label>Wyrzuć po ilu godzinach bez akceptacji</label>
+          <input type="number" id="s-kick_after_hours" min="1" max="720" placeholder="48">
+          <span class="setting-hint">Domyślnie 48h. Bot wyrzuca usera który nie zaakceptował regulaminu.</span>
+        </div>
+        <div class="setting-row">
+          <label>Wiadomość DM po akceptacji regulaminu</label>
+          <textarea id="s-msg_verified" rows="3" placeholder="Treść wiadomości powitalnej..."></textarea>
+          <span class="setting-hint">Wysyłana do usera gdy zaakceptuje regulamin. Możesz użyć dowolnego tekstu.</span>
+        </div>
+        <div class="setting-row">
+          <label>Wiadomość DM przed wyrzuceniem</label>
+          <textarea id="s-msg_kick" rows="3" placeholder="Treść wiadomości przed kickiem..."></textarea>
+          <span class="setting-hint">Użyj <code>{hours}</code> aby wstawić liczbę godzin. Np. "nie zaakceptowałeś w ciągu {hours}h"</span>
+        </div>
+      </div>
+
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px">
+        <h3 style="margin-bottom:20px;font-size:1rem;color:var(--accent2)">🎖️ System rang aktywności</h3>
+        <div class="setting-row">
+          <label>Próg rangi OPIERZONY (godziny)</label>
+          <input type="number" id="s-threshold_opierzony" min="1" max="9999" placeholder="48">
+          <span class="setting-hint">Łączny czas na kanałach głosowych wymagany do uzyskania rangi OPIERZONY.</span>
+        </div>
+        <div class="setting-row">
+          <label>Próg rangi BROJLER (godziny)</label>
+          <input type="number" id="s-threshold_brojler" min="1" max="9999" placeholder="96">
+          <span class="setting-hint">Łączny czas na kanałach głosowych wymagany do uzyskania rangi BROJLER.</span>
+        </div>
+        <div class="setting-row">
+          <label>Ogłoszenie o nadaniu rangi OPIERZONY</label>
+          <textarea id="s-msg_opierzony" rows="3"></textarea>
+          <span class="setting-hint">Użyj <code>{mention}</code> (oznaczenie usera), <code>{role}</code> (nazwa rangi), <code>{hours}</code> (próg godzin)</span>
+        </div>
+        <div class="setting-row">
+          <label>Ogłoszenie o nadaniu rangi BROJLER</label>
+          <textarea id="s-msg_brojler" rows="3"></textarea>
+          <span class="setting-hint">Użyj <code>{mention}</code>, <code>{role}</code>, <code>{hours}</code></span>
+        </div>
+      </div>
+
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:24px">
+        <h3 style="margin-bottom:20px;font-size:1rem;color:var(--accent3)">🤖 Ogólne</h3>
+        <div class="setting-row">
+          <label>Prefix komend Discord</label>
+          <input type="text" id="s-cmd_prefix" maxlength="5" placeholder="!">
+          <span class="setting-hint">Znak przed komendami, np. <code>!</code> (daje !pomoc) lub <code>/</code></span>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:center">
+        <button class="btn btn-primary" onclick="saveSettings()" id="save-btn">💾 Zapisz ustawienia</button>
+        <button class="btn btn-success" onclick="loadSettings()" style="background:transparent;border:1px solid var(--border);color:var(--muted)">↺ Odśwież</button>
+        <span id="settings-status" style="font-size:.85rem"></span>
       </div>
     </div>
 
