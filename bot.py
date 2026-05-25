@@ -33,18 +33,15 @@ VERIFIED_ROLE_ID  = int(os.getenv("VERIFIED_ROLE_ID", "0"))
 DASHBOARD_SECRET  = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
 DASHBOARD_PORT    = int(os.getenv("PORT", "8080"))
 
-# Ustawienia edytowalne z dashboardu – domyślne wartości (nadpisywane z bazy po starcie)
-cfg = {
-    "rules_reaction":       os.getenv("RULES_REACTION", "👍"),
-    "kick_after_hours":     48,
-    "threshold_opierzony":  48,
-    "threshold_brojler":    96,
-    "msg_verified":         "✅ Witaj na serwerze! Zaakceptowałeś/aś regulamin i masz teraz pełny dostęp. Miłej zabawy! 🎉",
-    "msg_kick":             "👋 Zostałeś/aś usunięty/a z serwera, ponieważ nie zaakceptowałeś/aś regulaminu w ciągu {hours} godzin. Możesz dołączyć ponownie i zaakceptować regulamin.",
-    "msg_opierzony":        "🐦 **{mention}** właśnie awansował(a) na **{role}**!\nSkrzydła już nie takie miękkie – ponad **{hours}h** na kanałach! Tak trzymać, niepohamowany gadaczku! 🎊",
-    "msg_brojler":          "🏆 **{mention}** osiągnął(a) **{role}**!\nŁącznie ponad **{hours}h** na kanałach głosowych – to jest prawdziwe poświęcenie! Gratulacje, legendo! 🎉",
-    "cmd_prefix":           PREFIX,
-}
+# ── Ustawienia stałe ─────────────────────────────────────────────────────────
+RULES_REACTION      = os.getenv("RULES_REACTION", "👍")
+KICK_AFTER_HOURS    = 48
+THRESHOLD_OPIERZONY = 48   # godziny
+THRESHOLD_BROJLER   = 96   # godziny
+MSG_VERIFIED        = "✅ Witaj na serwerze! Zaakceptowałeś/aś regulamin i masz teraz pełny dostęp. Miłej zabawy! 🎉"
+MSG_KICK            = "👋 Zostałeś/aś usunięty/a z serwera, ponieważ nie zaakceptowałeś/aś regulaminu w ciągu {hours} godzin. Możesz dołączyć ponownie i zaakceptować regulamin."
+MSG_OPIERZONY       = "🐦 **{mention}** właśnie awansował(a) na **{role}**!\nSkrzydła już nie takie miękkie – ponad **{hours}h** na kanałach! Tak trzymać, niepohamowany gadaczku! 🎊"
+MSG_BROJLER         = "🏆 **{mention}** osiągnął(a) **{role}**!\nŁącznie ponad **{hours}h** na kanałach głosowych – to jest prawdziwe poświęcenie! Gratulacje, legendo! 🎉"
 
 pending_verification: dict[int, datetime] = {}
 
@@ -53,20 +50,12 @@ intents.message_content = True
 intents.voice_states    = True
 intents.members         = True
 
-bot = commands.Bot(command_prefix=lambda b, m: cfg["cmd_prefix"], intents=intents)
+bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 bot.remove_command("help")
 
 db      = Database()
 tracker = VoiceTracker(db, SPECIAL_CHANNEL_ID)
 fmt     = StatsFormatter()
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def threshold_opierzony_s() -> int:
-    return int(cfg["threshold_opierzony"]) * 3600
-
-def threshold_brojler_s() -> int:
-    return int(cfg["threshold_brojler"]) * 3600
 
 # ── Dekorator uprawnień ───────────────────────────────────────────────────────
 
@@ -85,13 +74,6 @@ def has_stats_role():
 async def on_ready():
     print(f"✅  Zalogowano jako {bot.user} ({bot.user.id})")
     await db.init()
-    # Załaduj ustawienia z bazy
-    saved = await db.get_all_settings()
-    for key, value in saved.items():
-        if key in cfg:
-            cfg[key] = value
-    print(f"⚙️   Załadowano {len(saved)} ustawień z bazy.")
-
     save_sessions.start()
     monthly_report_task.start()
     quarterly_report_task.start()
@@ -123,7 +105,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         return
     if payload.message_id != RULES_MESSAGE_ID:
         return
-    if str(payload.emoji) != cfg["rules_reaction"]:
+    if str(payload.emoji) != RULES_REACTION:
         return
     if payload.user_id == bot.user.id:
         return
@@ -143,7 +125,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         await member.add_roles(verified_role, reason="Akceptacja regulaminu")
         pending_verification.pop(member.id, None)
         try:
-            await member.send(cfg["msg_verified"])
+            await member.send(MSG_VERIFIED)
         except discord.Forbidden:
             pass
     except discord.Forbidden:
@@ -181,7 +163,7 @@ async def verification_checker():
         return
     now     = datetime.utcnow()
     to_kick = [uid for uid, jt in list(pending_verification.items())
-               if (now - jt.replace(tzinfo=None)).total_seconds() / 3600 >= int(cfg["kick_after_hours"])]
+               if (now - jt.replace(tzinfo=None)).total_seconds() / 3600 >= KICK_AFTER_HOURS]
     for guild in bot.guilds:
         for user_id in to_kick:
             member = guild.get_member(user_id)
@@ -189,11 +171,11 @@ async def verification_checker():
                 pending_verification.pop(user_id, None)
                 continue
             try:
-                await member.send(cfg["msg_kick"].format(hours=cfg["kick_after_hours"]))
+                await member.send(MSG_KICK.format(hours=KICK_AFTER_HOURS))
             except discord.Forbidden:
                 pass
             try:
-                await member.kick(reason=f"Brak akceptacji regulaminu w ciągu {cfg['kick_after_hours']}h")
+                await member.kick(reason=f"Brak akceptacji regulaminu w ciągu {KICK_AFTER_HOURS}h")
                 pending_verification.pop(user_id, None)
             except discord.Forbidden:
                 pass
@@ -285,29 +267,29 @@ async def _apply_roles(member: discord.Member, total_seconds: int, announce_ch):
     role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
     role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
     try:
-        if total_seconds >= threshold_brojler_s() and role_brojler:
+        if total_seconds >= THRESHOLD_BROJLER * 3600 and role_brojler:
             if role_brojler not in member.roles:
                 await member.add_roles(role_brojler, reason="Voice tracker – próg BROJLER")
                 await db.log_role_grant(member.id, member.display_name, "BROJLER", total_seconds)
                 if announce_ch:
-                    await announce_ch.send(cfg["msg_brojler"].format(
+                    await announce_ch.send(MSG_BROJLER.format(
                         mention=member.mention,
                         role=role_brojler.name,
-                        hours=cfg["threshold_brojler"]
+                        hours=THRESHOLD_BROJLER
                     ))
             for r in [role_opierzony, role_pisklak]:
                 if r and r in member.roles:
                     await member.remove_roles(r, reason="Awans na BROJLER")
 
-        elif total_seconds >= threshold_opierzony_s() and role_opierzony:
+        elif total_seconds >= THRESHOLD_OPIERZONY * 3600 and role_opierzony:
             if role_opierzony not in member.roles:
                 await member.add_roles(role_opierzony, reason="Voice tracker – próg OPIERZONY")
                 await db.log_role_grant(member.id, member.display_name, "OPIERZONY", total_seconds)
                 if announce_ch:
-                    await announce_ch.send(cfg["msg_opierzony"].format(
+                    await announce_ch.send(MSG_OPIERZONY.format(
                         mention=member.mention,
                         role=role_opierzony.name,
-                        hours=cfg["threshold_opierzony"]
+                        hours=THRESHOLD_OPIERZONY
                     ))
             if role_pisklak and role_pisklak in member.roles:
                 await member.remove_roles(role_pisklak, reason="Awans na OPIERZONY")
@@ -456,40 +438,6 @@ async def api_activity_chart(request):
     if not _auth(request): return web.Response(status=401)
     return _json(await db.get_daily_activity(days=30))
 
-async def api_get_settings(request):
-    if not _auth(request): return web.Response(status=401)
-    return _json(cfg)
-
-async def api_save_settings(request):
-    """POST /api/settings – zapisuje ustawienia do bazy i aktualizuje cfg w locie."""
-    if not _auth(request): return web.Response(status=401)
-    try:
-        body = await request.json()
-    except Exception:
-        return web.Response(status=400)
-
-    ALLOWED_KEYS = {
-        "rules_reaction", "kick_after_hours", "threshold_opierzony", "threshold_brojler",
-        "msg_verified", "msg_kick", "msg_opierzony", "msg_brojler", "cmd_prefix",
-    }
-    updated = {}
-    for key, value in body.items():
-        if key not in ALLOWED_KEYS:
-            continue
-        # Walidacja typów liczbowych
-        if key in ("kick_after_hours", "threshold_opierzony", "threshold_brojler"):
-            try:
-                value = int(value)
-                if value < 1:
-                    continue
-            except (ValueError, TypeError):
-                continue
-        cfg[key] = value
-        updated[key] = value
-
-    await db.save_settings(updated)
-    return _json({"ok": True, "updated": list(updated.keys())})
-
 async def api_action(request):
     if not _auth(request): return web.Response(status=401)
     try:
@@ -504,12 +452,6 @@ async def api_action(request):
     elif action == "quarterly_report":
         asyncio.create_task(_send_quarterly_report())
         return _json({"ok": True, "message": "Raport kwartalny wysyłany..."})
-    elif action == "update_roles":
-        async def _run():
-            for guild in bot.guilds:
-                await _update_activity_roles(guild, announce=True)
-        asyncio.create_task(_run())
-        return _json({"ok": True, "message": "Przeliczanie rang rozpoczęte..."})
     return _json({"ok": False, "message": f"Nieznana akcja: {action}"})
 
 async def api_health(request):
@@ -525,8 +467,6 @@ def build_app() -> web.Application:
     app.router.add_get("/api/inactive",        api_inactive)
     app.router.add_get("/api/role-grants",     api_role_grants)
     app.router.add_get("/api/activity-chart",  api_activity_chart)
-    app.router.add_get("/api/settings",        api_get_settings)
-    app.router.add_post("/api/settings",       api_save_settings)
     app.router.add_post("/api/action",         api_action)
     return app
 
