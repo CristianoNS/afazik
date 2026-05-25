@@ -105,8 +105,6 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         return
     if payload.message_id != RULES_MESSAGE_ID:
         return
-    if str(payload.emoji) != RULES_REACTION:
-        return
     if payload.user_id == bot.user.id:
         return
 
