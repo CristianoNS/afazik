@@ -143,11 +143,13 @@ async def _send_afazja_main():
     mentions = _mentions()
     linie = [
         mentions,
-        "",
         "# Nieloty, pora na sobotną afazję!",
+        "",
         "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**.",
         "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!",
+        "",
         "🕗 **Widzimy się tutaj:** <#1485261013434765376>",
+        "",
         "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!",
     ]
     tekst = "\n".join(linie)
@@ -373,11 +375,13 @@ async def wiadomosc_test(ctx):
     # Wiadomość 1
     linie = [
         mentions,
-        "",
         "# Nieloty, pora na sobotną afazję!",
+        "",
         "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**.",
         "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!",
+        "",
         "🕗 **Widzimy się tutaj:** <#1485261013434765376>",
+        "",
         "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!",
     ]
     tekst = "\n".join(linie)
