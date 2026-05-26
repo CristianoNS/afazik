@@ -141,21 +141,19 @@ async def _send_afazja_main():
     if not ch:
         return
     mentions = _mentions()
-    linie = [
-        mentions,
-        "# Nieloty, pora na sobotną afazję!",
-        "",
-        "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**.",
-        "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!",
-        "",
-        "🕗 **Widzimy się tutaj:** <#1485261013434765376>",
-        "",
-        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!",
-    ]
-    tekst = "\n".join(linie)
+    opis = (
+        "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**. "
+        "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!\n\n"
+        "🕗 **Widzimy się tutaj:** <#1485261013434765376>\n\n"
+        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
+    )
+    embed = discord.Embed(
+        title="Nieloty, pora na sobotnią afazję!",
+        description=opis,
+    )
     if ANNOUNCE_IMAGE_URL:
-        tekst += f"\n{ANNOUNCE_IMAGE_URL}"
-    msg = await ch.send(content=tekst)
+        embed.set_image(url=ANNOUNCE_IMAGE_URL)
+    msg = await ch.send(content=mentions, embed=embed)
     await msg.add_reaction("🥚")
 
 async def _send_afazja_reminder_1():
@@ -373,23 +371,20 @@ async def wiadomosc_test(ctx):
     mentions = _mentions()
 
     # Wiadomość 1
-    linie = [
-        mentions,
-        "# Nieloty, pora na sobotną afazję!",
-        "",
-        "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**.",
-        "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!",
-        "",
-        "🕗 **Widzimy się tutaj:** <#1485261013434765376>",
-        "",
-        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!",
-    ]
-    tekst = "\n".join(linie)
+    opis = (
+        "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**. "
+        "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!\n\n"
+        "\U0001f557 **Widzimy się tutaj:** <#1485261013434765376>\n\n"
+        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
+    )
+    embed1 = discord.Embed(
+        title="Nieloty, pora na sobotnią afazję!",
+        description=opis,
+    )
     if ANNOUNCE_IMAGE_URL:
-        tekst += f"\n{ANNOUNCE_IMAGE_URL}"
-    msg = await ch.send(content=tekst)
-    await msg.add_reaction("🥚")
-
+        embed1.set_image(url=ANNOUNCE_IMAGE_URL)
+    msg = await ch.send(content=mentions, embed=embed1)
+    await msg.add_reaction("\U0001f95a")
     # Wiadomość 2
     mentions2 = _mentions()
     linie2 = [
