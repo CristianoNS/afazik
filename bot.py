@@ -29,6 +29,10 @@ ROLE_BROJLER_ID   = int(os.getenv("ROLE_BROJLER_ID", "0"))
 DASHBOARD_SECRET  = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
 DASHBOARD_PORT    = int(os.getenv("PORT", "8080"))
 
+# ── Ogłoszenia Afazja ────────────────────────────────────────────────────────
+ANNOUNCE_CHANNEL_ID  = int(os.getenv("ANNOUNCE_CHANNEL_ID", "0"))   # kanał tekstowy na ogłoszenia
+ANNOUNCE_IMAGE_URL   = os.getenv("ANNOUNCE_IMAGE_URL", "")           # URL obrazka w ogłoszeniu
+
 # ── Ustawienia stałe ─────────────────────────────────────────────────────────
 THRESHOLD_OPIERZONY = 48   # godziny
 THRESHOLD_BROJLER   = 96   # godziny
@@ -68,6 +72,7 @@ async def on_ready():
     monthly_report_task.start()
     quarterly_report_task.start()
     role_updater.start()
+    afazja_announcer.start()
 
     print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
 
@@ -101,6 +106,95 @@ async def quarterly_report_task():
 async def role_updater():
     for guild in bot.guilds:
         await _update_activity_roles(guild, announce=True)
+
+# ── Ogłoszenia Afazja ────────────────────────────────────────────────────────
+
+@tasks.loop(minutes=1)
+async def afazja_announcer():
+    """Co minutę sprawdza czy czas wysłać ogłoszenie o Afazji (Pt i Sb)."""
+    now = datetime.now(LOCAL_TZ)
+    wd  = now.weekday()  # 4=Pt, 5=Sb
+
+    if wd not in (4, 5):
+        return
+    if ANNOUNCE_CHANNEL_ID == 0:
+        return
+
+    if now.hour == 10 and now.minute == 0:
+        await _send_afazja_main()
+    elif now.hour == 16 and now.minute == 0:
+        await _send_afazja_reminder_1()
+    elif now.hour == 19 and now.minute == 0:
+        await _send_afazja_reminder_2()
+
+def _mentions() -> str:
+    """Buduje string z oznaczeniami rang."""
+    parts = []
+    for role_id in [ROLE_BROJLER_ID, ROLE_OPIERZONY_ID, ROLE_PISKLAK_ID]:
+        if role_id:
+            parts.append(f"<@&{role_id}>")
+    return " ".join(parts)
+
+async def _send_afazja_main():
+    """Główne ogłoszenie o Afazji – 10:00."""
+    ch = bot.get_channel(ANNOUNCE_CHANNEL_ID)
+    if not ch:
+        return
+    mentions = _mentions()
+    linie = [
+        mentions,
+        "",
+        "# Nieloty, pora na sobotną afazję!",
+        "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**.",
+        "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!",
+        "🕗 **Widzimy się tutaj:** <#1485261013434765376>",
+        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!",
+    ]
+    tekst = "\n".join(linie)
+    if ANNOUNCE_IMAGE_URL:
+        tekst += f"\n{ANNOUNCE_IMAGE_URL}"
+    msg = await ch.send(content=tekst)
+    await msg.add_reaction("🥚")
+
+async def _send_afazja_reminder_1():
+    """Pierwsze przypomnienie – 16:00."""
+    ch = bot.get_channel(ANNOUNCE_CHANNEL_ID)
+    if not ch:
+        return
+    mentions = _mentions()
+    linie = [
+        mentions,
+        "",
+        "⏰ **Jeszcze tylko kilka godzin!**",
+        "",
+        "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
+        "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
+        "Do zobaczenia na kanale! 🐓",
+        "",
+        "🕗 **Start eventu:** 20:00",
+        "🎙️ **Kanał:** <#1485261013434765376>",
+    ]
+    await ch.send(content="\n".join(linie))
+
+async def _send_afazja_reminder_2():
+    """Drugie przypomnienie – 19:00."""
+    ch = bot.get_channel(ANNOUNCE_CHANNEL_ID)
+    if not ch:
+        return
+    mentions = _mentions()
+    linie = [
+        mentions,
+        "",
+        "🚨 **Za chwilę startujemy!**",
+        "",
+        "Ostatni dzwonek, kuraki! Za chwilę otwieramy kanał. "
+        "Kto nie wejdzie teraz, ten przegapi najlepsze jaja wieczoru. "
+        "Lecimy! 🪶🔥",
+        "",
+        "🕗 **Start eventu:** 20:00",
+        "🎙️ **Kanał:** <#1485261013434765376>",
+    ]
+    await ch.send(content="\n".join(linie))
 
 # ── Logika raportów ───────────────────────────────────────────────────────────
 
@@ -261,6 +355,68 @@ async def stats_user(ctx, *, member: discord.Member = None):
     rows   = await db.get_user_stats(target.id)
     embed  = fmt.build_user_embed(rows, target.display_name)
     await ctx.send(embed=embed)
+
+@bot.command(name="wiadomosc-test", aliases=["wiadomość-test"])
+@commands.has_permissions(administrator=True)
+async def wiadomosc_test(ctx):
+    """Testowe wysłanie wszystkich trzech wiadomości afazja na bieżącym kanale (tylko admin)."""
+    await ctx.message.delete()
+    original = ANNOUNCE_CHANNEL_ID
+    # Tymczasowo podmień ID kanału na bieżący
+    import sys
+    mod = sys.modules[__name__]
+    object.__setattr__(mod, 'ANNOUNCE_CHANNEL_ID', ctx.channel.id) if False else None
+
+    ch = ctx.channel
+    mentions = _mentions()
+
+    # Wiadomość 1
+    linie = [
+        mentions,
+        "",
+        "# Nieloty, pora na sobotną afazję!",
+        "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**.",
+        "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!",
+        "🕗 **Widzimy się tutaj:** <#1485261013434765376>",
+        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!",
+    ]
+    tekst = "\n".join(linie)
+    if ANNOUNCE_IMAGE_URL:
+        tekst += f"\n{ANNOUNCE_IMAGE_URL}"
+    msg = await ch.send(content=tekst)
+    await msg.add_reaction("🥚")
+
+    # Wiadomość 2
+    mentions2 = _mentions()
+    linie2 = [
+        mentions2,
+        "",
+        "⏰ **Jeszcze tylko kilka godzin!**",
+        "",
+        "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
+        "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
+        "Do zobaczenia na kanale! 🐓",
+        "",
+        "🕗 **Start eventu:** 20:00",
+        "🎙️ **Kanał:** <#1485261013434765376>",
+    ]
+    await ch.send(content="\n".join(linie2))
+
+    # Wiadomość 3
+    mentions3 = _mentions()
+    linie3 = [
+        mentions3,
+        "",
+        "🚨 **Za chwilę startujemy!**",
+        "",
+        "Ostatni dzwonek, kuraki! Za chwilę otwieramy kanał. "
+        "Kto nie wejdzie teraz, ten przegapi najlepsze jaja wieczoru. "
+        "Lecimy! 🪶🔥",
+        "",
+        "🕗 **Start eventu:** 20:00",
+        "🎙️ **Kanał:** <#1485261013434765376>",
+    ]
+    await ch.send(content="\n".join(linie3))
 
 @bot.command(name="czas-test")
 @commands.has_permissions(administrator=True)
