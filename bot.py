@@ -72,7 +72,7 @@ async def on_ready():
     monthly_report_task.start()
     quarterly_report_task.start()
     role_updater.start()
-    afazja_announcer.start()
+    # afazja_announcer.start()  # Moduł ogłoszeń – odkomentuj aby aktywować
 
     print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
 
