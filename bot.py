@@ -378,7 +378,7 @@ async def wiadomosc_test(ctx):
     await msg.add_reaction("🥚")
 
     await ctx.send(content="——— 📌 **WERSJA SOBOTNIA** ———")
-    embed1b = discord.Embed(title="Nieloty, pora na sobotną afazję!", description=opis_main)
+    embed1b = discord.Embed(title="Nieloty, pora na sobotnią afazję!", description=opis_main)
     if ANNOUNCE_IMAGE_URL:
         embed1b.set_image(url=ANNOUNCE_IMAGE_URL)
     msg2 = await ch.send(content=mentions, embed=embed1b)
