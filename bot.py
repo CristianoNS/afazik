@@ -122,7 +122,7 @@ async def afazja_announcer():
 
     if now.hour == 10 and now.minute == 0:
         await _send_afazja_main()
-    elif now.hour == 16 and now.minute == 0:
+    elif now.hour == 15 and now.minute == 0:
         await _send_afazja_reminder_1()
     elif now.hour == 19 and now.minute == 0:
         await _send_afazja_reminder_2()
@@ -157,7 +157,7 @@ async def _send_afazja_main():
     await msg.add_reaction("🥚")
 
 async def _send_afazja_reminder_1():
-    """Pierwsze przypomnienie – 16:00."""
+    """Pierwsze przypomnienie – 15:00."""
     ch = bot.get_channel(ANNOUNCE_CHANNEL_ID)
     if not ch:
         return
