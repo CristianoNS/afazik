@@ -184,7 +184,7 @@ async def _send_afazja_reminder_2():
         return
     mentions = _mentions()
     opis = (
-        "Dosć gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
+        "Dość gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
         "Do zobaczenia na grzędzi!\n\n"
         "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
     )
@@ -398,7 +398,7 @@ async def wiadomosc_test(ctx):
 
     await ctx.send(content="——— 📌 **DRUGIE PRZYPOMNIENIE (19:00)** ———")
     opis3 = (
-        "Dosć gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
+        "Dość gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
         "Do zobaczenia na grzędzi!\n\n"
         "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
     )
