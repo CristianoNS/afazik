@@ -162,19 +162,20 @@ async def _send_afazja_reminder_1():
     if not ch:
         return
     mentions = _mentions()
-    linie = [
-        mentions,
-        "",
-        "⏰ **Jeszcze tylko kilka godzin!**",
-        "",
+    opis = (
         "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
         "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
-        "Do zobaczenia na kanale! 🐓",
-        "",
-        "🕗 **Start eventu:** 20:00",
-        "🎙️ **Kanał:** <#1485261013434765376>",
-    ]
-    await ch.send(content="\n".join(linie))
+        "Do zobaczenia na kanale!\n\n"
+        "⏰ **Widzimy się tutaj:** <#1485261013434765376>\n\n"
+        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
+    )
+    embed = discord.Embed(
+        title="Jeszcze tylko kilka godzin!",
+        description=opis,
+    )
+    if ANNOUNCE_IMAGE_URL:
+        embed.set_image(url=ANNOUNCE_IMAGE_URL)
+    await ch.send(content=mentions, embed=embed)
 
 async def _send_afazja_reminder_2():
     """Drugie przypomnienie – 19:00."""
@@ -386,20 +387,20 @@ async def wiadomosc_test(ctx):
     msg = await ch.send(content=mentions, embed=embed1)
     await msg.add_reaction("\U0001f95a")
     # Wiadomość 2
-    mentions2 = _mentions()
-    linie2 = [
-        mentions2,
-        "",
-        "⏰ **Jeszcze tylko kilka godzin!**",
-        "",
+    opis2 = (
         "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
         "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
-        "Do zobaczenia na kanale! 🐓",
-        "",
-        "🕗 **Start eventu:** 20:00",
-        "🎙️ **Kanał:** <#1485261013434765376>",
-    ]
-    await ch.send(content="\n".join(linie2))
+        "Do zobaczenia na kanale!\n\n"
+        "⏰ **Widzimy się tutaj:** <#1485261013434765376>\n\n"
+        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
+    )
+    embed2 = discord.Embed(
+        title="Jeszcze tylko kilka godzin!",
+        description=opis2,
+    )
+    if ANNOUNCE_IMAGE_URL:
+        embed2.set_image(url=ANNOUNCE_IMAGE_URL)
+    await ch.send(content=_mentions(), embed=embed2)
 
     # Wiadomość 3
     mentions3 = _mentions()
