@@ -182,19 +182,18 @@ async def _send_afazja_reminder_2():
     if not ch:
         return
     mentions = _mentions()
-    linie = [
-        mentions,
-        "",
-        "🚨 **Za chwilę startujemy!**",
-        "",
-        "Ostatni dzwonek, kuraki! Za chwilę otwieramy kanał. "
-        "Kto nie wejdzie teraz, ten przegapi najlepsze jaja wieczoru. "
-        "Lecimy! 🪶🔥",
-        "",
-        "🕗 **Start eventu:** 20:00",
-        "🎙️ **Kanał:** <#1485261013434765376>",
-    ]
-    await ch.send(content="\n".join(linie))
+    opis = (
+        "Dosć gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
+        "Do zobaczenia na grzędzi!\n\n"
+        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
+    )
+    embed = discord.Embed(
+        title="Zaczynamy za chwilę!",
+        description=opis,
+    )
+    if ANNOUNCE_IMAGE_URL:
+        embed.set_image(url=ANNOUNCE_IMAGE_URL)
+    await ch.send(content=mentions, embed=embed)
 
 # ── Logika raportów ───────────────────────────────────────────────────────────
 
@@ -401,21 +400,18 @@ async def wiadomosc_test(ctx):
     await ch.send(content=_mentions(), embed=embed2)
 
     # Wiadomość 3
-    mentions3 = _mentions()
-    linie3 = [
-        mentions3,
-        "",
-        "🚨 **Za chwilę startujemy!**",
-        "",
-        "Ostatni dzwonek, kuraki! Za chwilę otwieramy kanał. "
-        "Kto nie wejdzie teraz, ten przegapi najlepsze jaja wieczoru. "
-        "Lecimy! 🪶🔥",
-        "",
-        "🕗 **Start eventu:** 20:00",
-        "🎙️ **Kanał:** <#1485261013434765376>",
-    ]
-    await ch.send(content="\n".join(linie3))
-
+    opis3 = (
+        "Dosć gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
+        "Do zobaczenia na grzędzi!\n\n"
+        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
+    )
+    embed3 = discord.Embed(
+        title="Zaczynamy za chwilę!",
+        description=opis3,
+    )
+    if ANNOUNCE_IMAGE_URL:
+        embed3.set_image(url=ANNOUNCE_IMAGE_URL)
+    await ch.send(content=_mentions(), embed=embed3)
 @bot.command(name="czas-test")
 @commands.has_permissions(administrator=True)
 async def test_all(ctx):
