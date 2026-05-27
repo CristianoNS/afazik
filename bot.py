@@ -359,61 +359,54 @@ async def stats_user(ctx, *, member: discord.Member = None):
 @bot.command(name="wiadomosc-test", aliases=["wiadomość-test"])
 @commands.has_permissions(administrator=True)
 async def wiadomosc_test(ctx):
-    """Testowe wysłanie wszystkich trzech wiadomości afazja na bieżącym kanale (tylko admin)."""
+    """Testowe wysłanie wszystkich wiadomości afazja na bieżącym kanale (tylko admin)."""
     await ctx.message.delete()
-    original = ANNOUNCE_CHANNEL_ID
-    # Tymczasowo podmień ID kanału na bieżący
-    import sys
-    mod = sys.modules[__name__]
-    object.__setattr__(mod, 'ANNOUNCE_CHANNEL_ID', ctx.channel.id) if False else None
-
     ch = ctx.channel
     mentions = _mentions()
-    wd_test = datetime.now(LOCAL_TZ).weekday()
-
-    # Wiadomość 1
-    opis = (
+    opis_main = (
         "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**. "
         "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!\n\n"
-        "\U0001f557 **Widzimy się tutaj:** <#1485261013434765376>\n\n"
+        "🕗 **Widzimy się tutaj:** <#1485261013434765376>\n\n"
         "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
     )
-    embed1 = discord.Embed(
-        title="Nieloty, pora na sobotnią afazję!",
-        description=opis,
-    )
+
+    await ctx.send(content="——— 📌 **WERSJA PIĄTKOWA** ———")
+    embed1a = discord.Embed(title="Nieloty, pora na piątkową afazję!", description=opis_main)
     if ANNOUNCE_IMAGE_URL:
-        embed1.set_image(url=ANNOUNCE_IMAGE_URL)
-    msg = await ch.send(content=mentions, embed=embed1)
-    await msg.add_reaction("\U0001f95a")
-    # Wiadomość 2
+        embed1a.set_image(url=ANNOUNCE_IMAGE_URL)
+    msg = await ch.send(content=mentions, embed=embed1a)
+    await msg.add_reaction("🥚")
+
+    await ctx.send(content="——— 📌 **WERSJA SOBOTNIA** ———")
+    embed1b = discord.Embed(title="Nieloty, pora na sobotną afazję!", description=opis_main)
+    if ANNOUNCE_IMAGE_URL:
+        embed1b.set_image(url=ANNOUNCE_IMAGE_URL)
+    msg2 = await ch.send(content=mentions, embed=embed1b)
+    await msg2.add_reaction("🥚")
+
+    await ctx.send(content="——— 📌 **PIERWSZE PRZYPOMNIENIE (15:00)** ———")
     opis2 = (
         "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
         "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
         "Do zobaczenia na kanale!\n\n"
         "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
     )
-    embed2 = discord.Embed(
-        title="Jeszcze tylko kilka godzin!",
-        description=opis2,
-    )
+    embed2 = discord.Embed(title="Jeszcze tylko kilka godzin!", description=opis2)
     if ANNOUNCE_IMAGE_URL:
         embed2.set_image(url=ANNOUNCE_IMAGE_URL)
-    await ch.send(content=_mentions(), embed=embed2)
+    await ch.send(content=mentions, embed=embed2)
 
-    # Wiadomość 3
+    await ctx.send(content="——— 📌 **DRUGIE PRZYPOMNIENIE (19:00)** ———")
     opis3 = (
         "Dosć gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
         "Do zobaczenia na grzędzi!\n\n"
         "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
     )
-    embed3 = discord.Embed(
-        title="Zaczynamy za chwilę!",
-        description=opis3,
-    )
+    embed3 = discord.Embed(title="Zaczynamy za chwilę!", description=opis3)
     if ANNOUNCE_IMAGE_URL:
         embed3.set_image(url=ANNOUNCE_IMAGE_URL)
-    await ch.send(content=_mentions(), embed=embed3)
+    await ch.send(content=mentions, embed=embed3)
+
 @bot.command(name="czas-test")
 @commands.has_permissions(administrator=True)
 async def test_all(ctx):
