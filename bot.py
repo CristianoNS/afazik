@@ -121,7 +121,7 @@ async def afazja_announcer():
         return
 
     if now.hour == 10 and now.minute == 0:
-        await _send_afazja_main()
+        await _send_afazja_main(wd)
     elif now.hour == 15 and now.minute == 0:
         await _send_afazja_reminder_1()
     elif now.hour == 19 and now.minute == 0:
@@ -135,22 +135,23 @@ def _mentions() -> str:
             parts.append(f"<@&{role_id}>")
     return " ".join(parts)
 
-async def _send_afazja_main():
-    """Główne ogłoszenie o Afazji – 10:00."""
+async def _send_afazja_main(weekday: int = 5):
+    """Główne ogłoszenie o Afazji – 10:00. weekday: 4=Pt, 5=Sb."""
     ch = bot.get_channel(ANNOUNCE_CHANNEL_ID)
     if not ch:
         return
     mentions = _mentions()
+    if weekday == 4:
+        title = "Nieloty, pora na piątkową afazję!"
+    else:
+        title = "Nieloty, pora na sobotnią afazję!"
     opis = (
         "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**. "
         "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!\n\n"
         "🕗 **Widzimy się tutaj:** <#1485261013434765376>\n\n"
         "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
     )
-    embed = discord.Embed(
-        title="Nieloty, pora na sobotnią afazję!",
-        description=opis,
-    )
+    embed = discord.Embed(title=title, description=opis)
     if ANNOUNCE_IMAGE_URL:
         embed.set_image(url=ANNOUNCE_IMAGE_URL)
     msg = await ch.send(content=mentions, embed=embed)
@@ -368,6 +369,7 @@ async def wiadomosc_test(ctx):
 
     ch = ctx.channel
     mentions = _mentions()
+    wd_test = datetime.now(LOCAL_TZ).weekday()
 
     # Wiadomość 1
     opis = (
