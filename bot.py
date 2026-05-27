@@ -166,8 +166,7 @@ async def _send_afazja_reminder_1():
         "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
         "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
         "Do zobaczenia na kanale!\n\n"
-        "⏰ **Widzimy się tutaj:** <#1485261013434765376>\n\n"
-        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
+        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
     )
     embed = discord.Embed(
         title="Jeszcze tylko kilka godzin!",
@@ -391,8 +390,7 @@ async def wiadomosc_test(ctx):
         "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
         "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
         "Do zobaczenia na kanale!\n\n"
-        "⏰ **Widzimy się tutaj:** <#1485261013434765376>\n\n"
-        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
+        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
     )
     embed2 = discord.Embed(
         title="Jeszcze tylko kilka godzin!",
