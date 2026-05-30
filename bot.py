@@ -33,6 +33,8 @@ DASHBOARD_PORT    = int(os.getenv("PORT", "8080"))
 ANNOUNCE_CHANNEL_ID  = int(os.getenv("ANNOUNCE_CHANNEL_ID", "0"))   # kanał tekstowy na ogłoszenia
 ANNOUNCE_IMAGE_URL   = os.getenv("ANNOUNCE_IMAGE_URL", "")           # URL obrazka w ogłoszeniu
 
+AFK_CHANNEL_ID       = 1487890304362217562                                # kanał AFK – nie liczony do statystyk
+
 # ── Ustawienia stałe ─────────────────────────────────────────────────────────
 THRESHOLD_OPIERZONY = 48   # godziny
 THRESHOLD_BROJLER   = 96   # godziny
@@ -80,9 +82,16 @@ async def on_ready():
 async def on_voice_state_update(member, before, after):
     now = datetime.utcnow()
     if after.channel and (not before.channel or before.channel.id != after.channel.id):
-        tracker.join(member.id, member.display_name, after.channel.id, after.channel.name, now)
-    if before.channel and (not after.channel or before.channel.id != after.channel.id):
-        await tracker.leave(member.id, before.channel.id, now)
+        # Pomijaj kanał AFK
+        if after.channel.id != AFK_CHANNEL_ID:
+            tracker.join(member.id, member.display_name, after.channel.id, after.channel.name, now)
+        # Jeśli przeszedł z normalnego kanału na AFK – zakończ sesję
+        if before.channel and before.channel.id != AFK_CHANNEL_ID:
+            await tracker.leave(member.id, before.channel.id, now)
+    elif before.channel and (not after.channel or before.channel.id != after.channel.id):
+        # Opuścił kanał (nie AFK)
+        if before.channel.id != AFK_CHANNEL_ID:
+            await tracker.leave(member.id, before.channel.id, now)
 
 # ── Zadania cykliczne ─────────────────────────────────────────────────────────
 
@@ -428,15 +437,13 @@ async def test_all(ctx):
 async def help_cmd(ctx):
     embed = discord.Embed(title="📖 Komendy bota", color=discord.Color.blurple())
     cmds = [
-        ("!czas-tydzień",       "Ranking aktywności – ostatnie 7 dni"),
-        ("!czas-miesiąc",       "Ranking aktywności – ostatnie 30 dni"),
-        ("!czas-kwartał",       "Ranking aktywności – ostatnie 3 miesiące"),
-        ("!czas-alltime",       "Ranking aktywności – wszystkie czasy"),
-        ("!czas-afazja",        "Kanał Afazja – Pt/Sb 20:00–06:00"),
-        ("!czas-kto [@nick]",   "Statystyki konkretnej osoby"),
-        ("!pomoc",              "Ta wiadomość"),
-        ("!wiadomość-test",     "Test wiadomości Afazja na bieżącym kanale (admin)"),
-        ("!czas-test",          "Test raportów i rang (admin)"),
+        ("!czas-tydzień",     "Ranking aktywności – ostatnie 7 dni"),
+        ("!czas-miesiąc",     "Ranking aktywności – ostatnie 30 dni"),
+        ("!czas-kwartał",     "Ranking aktywności – ostatnie 3 miesiące"),
+        ("!czas-alltime",     "Ranking aktywności – wszystkie czasy"),
+        ("!czas-afazja",      "Kanał Afazja – Pt/Sb 20:00–06:00"),
+        ("!czas-kto [@nick]", "Statystyki konkretnej osoby"),
+        ("!pomoc",            "Ta wiadomość"),
     ]
     for name, desc in cmds:
         embed.add_field(name=name, value=desc, inline=False)
