@@ -7,12 +7,11 @@ import os
 import json
 import secrets
 import httpx
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request, Response, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, RedirectResponse
 import asyncpg
 
 # ── Konfiguracja ──────────────────────────────────────────────────────────────
@@ -30,19 +29,23 @@ TZ                  = ZoneInfo("Europe/Warsaw")
 
 REDIRECT_URI = f"{DASHBOARD_URL}/auth/callback"
 
-app = FastAPI(title="Voice Tracker Dashboard")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global pool
+    pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
+    yield
+    await pool.close()
+
+app = FastAPI(title="Voice Tracker Dashboard", lifespan=lifespan)
 
 # Prosta sesja in-memory (token → discord_user_id)
 sessions: dict[str, str] = {}
 
-# ── DB pool ───────────────────────────────────────────────────────────────────
+# ── DB pool (zarządzany przez lifespan) ──────────────────────────────────────
 
 pool: asyncpg.Pool | None = None
-
-@app.on_event("startup")
-async def startup():
-    global pool
-    pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
