@@ -288,9 +288,8 @@ async def _apply_roles(member: discord.Member, total_seconds: int, announce_ch):
                         role=role_brojler.name,
                         hours=THRESHOLD_BROJLER
                     ))
-            for r in [role_opierzony, role_pisklak]:
-                if r and r in member.roles:
-                    await member.remove_roles(r, reason="Awans na BROJLER")
+            if role_opierzony and role_opierzony in member.roles:
+                await member.remove_roles(role_opierzony, reason="Awans na BROJLER")
 
         elif total_seconds >= THRESHOLD_OPIERZONY * 3600 and role_opierzony:
             if role_opierzony not in member.roles:
