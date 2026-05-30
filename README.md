@@ -16,7 +16,8 @@ Działa 24/7 na Railway.com z bazą PostgreSQL.
 | `!czas-afazja` | Kanał Afazja – Pt/Sb 20:00–06:00 (all time) | Wyznaczona ranga |
 | `!czas-kto [@nick]` | Szczegółowe statystyki konkretnej osoby | Wyznaczona ranga |
 | `!pomoc` | Lista wszystkich komend | Wyznaczona ranga |
-| `!czas-test` | Test wszystkich automatycznych procesów | Administrator |
+| `!czas-test` | Test raportów i rang | Administrator |
+| `!wiadomość-test` | Test wiadomości Afazja na bieżącym kanale | Administrator |
 
 ---
 
@@ -46,7 +47,7 @@ Czas liczony łącznie ze zwykłych kanałów i kanału Afazja.
 | Próg | Akcja |
 |---|---|
 | 48h łącznie | Nadaj **OPIERZONY**, usuń **PISKLAK** |
-| 96h łącznie | Nadaj **BROJLER**, usuń **OPIERZONY** i **PISKLAK** |
+| 96h łącznie | Nadaj **BROJLER**, usuń **OPIERZONY** |
 
 Przy awansie bot wysyła ogłoszenie z gratulacjami na wyznaczony kanał tekstowy.
 
@@ -79,6 +80,8 @@ Panel dostępny w przeglądarce pod publicznym adresem Railway, chroniony logowa
 | `ROLE_PISKLAK_ID` | ID rangi startowej (usuwana przy 48h) |
 | `ROLE_OPIERZONY_ID` | ID rangi nadawanej po 48h |
 | `ROLE_BROJLER_ID` | ID rangi nadawanej po 96h |
+| `ANNOUNCE_CHANNEL_ID` | ID kanału tekstowego na ogłoszenia Afazja |
+| `ANNOUNCE_IMAGE_URL` | Bezpośredni URL obrazka w ogłoszeniach |
 | `DASHBOARD_SECRET` | Klucz łączący bota z dashboardem |
 | `TIMEZONE` | Strefa czasowa (domyślnie `Europe/Warsaw`) |
 | `COMMAND_PREFIX` | Prefix komend (domyślnie `!`) |
