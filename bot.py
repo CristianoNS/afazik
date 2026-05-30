@@ -428,13 +428,15 @@ async def test_all(ctx):
 async def help_cmd(ctx):
     embed = discord.Embed(title="📖 Komendy bota", color=discord.Color.blurple())
     cmds = [
-        ("!czas-tydzień",     "Ranking aktywności – ostatnie 7 dni"),
-        ("!czas-miesiąc",     "Ranking aktywności – ostatnie 30 dni"),
-        ("!czas-kwartał",     "Ranking aktywności – ostatnie 3 miesiące"),
-        ("!czas-alltime",     "Ranking aktywności – wszystkie czasy"),
-        ("!czas-afazja",      "Kanał Afazja – Pt/Sb 20:00–06:00"),
-        ("!czas-kto [@nick]", "Statystyki konkretnej osoby"),
-        ("!pomoc",            "Ta wiadomość"),
+        ("!czas-tydzień",       "Ranking aktywności – ostatnie 7 dni"),
+        ("!czas-miesiąc",       "Ranking aktywności – ostatnie 30 dni"),
+        ("!czas-kwartał",       "Ranking aktywności – ostatnie 3 miesiące"),
+        ("!czas-alltime",       "Ranking aktywności – wszystkie czasy"),
+        ("!czas-afazja",        "Kanał Afazja – Pt/Sb 20:00–06:00"),
+        ("!czas-kto [@nick]",   "Statystyki konkretnej osoby"),
+        ("!pomoc",              "Ta wiadomość"),
+        ("!wiadomość-test",     "Test wiadomości Afazja na bieżącym kanale (admin)"),
+        ("!czas-test",          "Test raportów i rang (admin)"),
     ]
     for name, desc in cmds:
         embed.add_field(name=name, value=desc, inline=False)
