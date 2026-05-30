@@ -3,8 +3,6 @@ stats.py – formatowanie statystyk do Discord Embeds.
 """
 
 import discord
-from datetime import timedelta
-
 
 def _fmt_time(seconds: int) -> str:
     """Zamienia sekundy na czytelny format hh:mm lub Xh Ym."""
