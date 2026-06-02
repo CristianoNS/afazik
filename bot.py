@@ -33,8 +33,6 @@ DASHBOARD_PORT    = int(os.getenv("PORT", "8080"))
 ANNOUNCE_CHANNEL_ID  = int(os.getenv("ANNOUNCE_CHANNEL_ID", "0"))   # kanał tekstowy na ogłoszenia
 ANNOUNCE_IMAGE_URL   = os.getenv("ANNOUNCE_IMAGE_URL", "")           # URL obrazka w ogłoszeniu
 
-AFK_CHANNEL_ID       = 1487890304362217562                                # kanał AFK – nie liczony do statystyk
-
 # ── Ustawienia stałe ─────────────────────────────────────────────────────────
 THRESHOLD_OPIERZONY = 48   # godziny
 THRESHOLD_BROJLER   = 96   # godziny
@@ -82,16 +80,9 @@ async def on_ready():
 async def on_voice_state_update(member, before, after):
     now = datetime.utcnow()
     if after.channel and (not before.channel or before.channel.id != after.channel.id):
-        # Pomijaj kanał AFK
-        if after.channel.id != AFK_CHANNEL_ID:
-            tracker.join(member.id, member.display_name, after.channel.id, after.channel.name, now)
-        # Jeśli przeszedł z normalnego kanału na AFK – zakończ sesję
-        if before.channel and before.channel.id != AFK_CHANNEL_ID:
-            await tracker.leave(member.id, before.channel.id, now)
-    elif before.channel and (not after.channel or before.channel.id != after.channel.id):
-        # Opuścił kanał (nie AFK)
-        if before.channel.id != AFK_CHANNEL_ID:
-            await tracker.leave(member.id, before.channel.id, now)
+        tracker.join(member.id, member.display_name, after.channel.id, after.channel.name, now)
+    if before.channel and (not after.channel or before.channel.id != after.channel.id):
+        await tracker.leave(member.id, before.channel.id, now)
 
 # ── Zadania cykliczne ─────────────────────────────────────────────────────────
 
@@ -301,7 +292,9 @@ async def _apply_roles(member: discord.Member, total_seconds: int, announce_ch):
                 await member.remove_roles(role_opierzony, reason="Awans na BROJLER")
 
         elif total_seconds >= THRESHOLD_OPIERZONY * 3600 and role_opierzony:
-            if role_opierzony not in member.roles:
+            # Nie nadawaj OPIERZONY jeśli osoba ma już rangę BROJLER
+            has_brojler = role_brojler and role_brojler in member.roles
+            if not has_brojler and role_opierzony not in member.roles:
                 await member.add_roles(role_opierzony, reason="Voice tracker – próg OPIERZONY")
                 await db.log_role_grant(member.id, member.display_name, "OPIERZONY", total_seconds)
                 if announce_ch:
