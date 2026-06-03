@@ -12,7 +12,7 @@ from database import Database
 from tracker import VoiceTracker
 from stats import StatsFormatter
 
-# ── Konfiguracja środowiskowa (stała, nie edytowalna z dashboardu) ─────────────
+# ── Konfiguracja ───────────────────────────────────────────────────────────────
 TOKEN              = os.getenv("DISCORD_TOKEN")
 PREFIX             = os.getenv("COMMAND_PREFIX", "!")
 SPECIAL_CHANNEL_ID = int(os.getenv("SPECIAL_CHANNEL_ID", "0"))
@@ -21,31 +21,27 @@ ROLE_ANNOUNCE_ID   = int(os.getenv("ROLE_ANNOUNCE_CHANNEL_ID", "0"))
 STATS_ROLE_ID      = int(os.getenv("STATS_ROLE_ID", "0"))
 TZ_NAME            = os.getenv("TIMEZONE", "Europe/Warsaw")
 LOCAL_TZ           = ZoneInfo(TZ_NAME)
+ROLE_PISKLAK_ID    = int(os.getenv("ROLE_PISKLAK_ID", "0"))
+ROLE_OPIERZONY_ID  = int(os.getenv("ROLE_OPIERZONY_ID", "0"))
+ROLE_BROJLER_ID    = int(os.getenv("ROLE_BROJLER_ID", "0"))
+DASHBOARD_SECRET   = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
+DASHBOARD_PORT     = int(os.getenv("PORT", "8080"))
+AFK_CHANNEL_ID     = 1487890304362217562
 
-ROLE_PISKLAK_ID   = int(os.getenv("ROLE_PISKLAK_ID", "0"))
-ROLE_OPIERZONY_ID = int(os.getenv("ROLE_OPIERZONY_ID", "0"))
-ROLE_BROJLER_ID   = int(os.getenv("ROLE_BROJLER_ID", "0"))
+# ── Ogłoszenia Afazja ──────────────────────────────────────────────────────────
+ANNOUNCE_CHANNEL_ID = int(os.getenv("ANNOUNCE_CHANNEL_ID", "0"))
+ANNOUNCE_IMAGE_URL  = os.getenv("ANNOUNCE_IMAGE_URL", "")
 
-DASHBOARD_SECRET  = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
-DASHBOARD_PORT    = int(os.getenv("PORT", "8080"))
-
-# ── Ogłoszenia Afazja ────────────────────────────────────────────────────────
-ANNOUNCE_CHANNEL_ID  = int(os.getenv("ANNOUNCE_CHANNEL_ID", "0"))   # kanał tekstowy na ogłoszenia
-ANNOUNCE_IMAGE_URL   = os.getenv("ANNOUNCE_IMAGE_URL", "")           # URL obrazka w ogłoszeniu
-
-AFK_CHANNEL_ID       = 1487890304362217562  # kanał AFK – nie liczony do statystyk
-
-# ── Ustawienia stałe ─────────────────────────────────────────────────────────
-THRESHOLD_OPIERZONY = 48   # godziny
-THRESHOLD_BROJLER   = 96   # godziny
-MSG_OPIERZONY       = "🐦 **{mention}** właśnie awansował(a) na **{role}**!\nSkrzydła już nie takie miękkie – ponad **{hours}h** na kanałach! Tak trzymać, niepohamowany gadaczku! 🎊"
-MSG_BROJLER         = "🏆 **{mention}** osiągnął(a) **{role}**!\nŁącznie ponad **{hours}h** na kanałach głosowych – to jest prawdziwe poświęcenie! Gratulacje, legendo! 🎉"
+# ── Progi rang ────────────────────────────────────────────────────────────────
+THRESHOLD_OPIERZONY = 48
+THRESHOLD_BROJLER   = 96
+MSG_OPIERZONY = "🐦 **{mention}** właśnie awansował(a) na **{role}**!\nSkrzydła już nie takie miękkie – ponad **{hours}h** na kanałach! Tak trzymać, niepohamowany gadaczku! 🎊"
+MSG_BROJLER   = "🏆 **{mention}** osiągnął(a) **{role}**!\nŁącznie ponad **{hours}h** na kanałach głosowych – to jest prawdziwe poświęcenie! Gratulacje, legendo! 🎉"
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states    = True
 intents.members         = True
-
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 bot.remove_command("help")
 
@@ -53,7 +49,7 @@ db      = Database()
 tracker = VoiceTracker(db, SPECIAL_CHANNEL_ID)
 fmt     = StatsFormatter()
 
-# ── Dekorator uprawnień ───────────────────────────────────────────────────────
+# ── Uprawnienia ───────────────────────────────────────────────────────────────
 
 def has_stats_role():
     async def predicate(ctx):
@@ -64,7 +60,7 @@ def has_stats_role():
         return any(r.id == STATS_ROLE_ID for r in ctx.author.roles)
     return commands.check(predicate)
 
-# ── Eventy ────────────────────────────────────────────────────────────────────
+# ── Eventy ─────────────────────────────────────────────────────────────────────
 
 @bot.event
 async def on_ready():
@@ -75,11 +71,9 @@ async def on_ready():
     quarterly_report_task.start()
     role_updater.start()
     afazja_announcer.start()
-
     print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
 
 def _is_deaf(vs) -> bool:
-    """Sprawdza czy użytkownik jest ogłuszony (własnie lub przez serwer)."""
     return vs.deaf or vs.self_deaf
 
 @bot.event
@@ -89,20 +83,15 @@ async def on_voice_state_update(member, before, after):
     deaf_changed    = (before.deaf != after.deaf) or (before.self_deaf != after.self_deaf)
 
     if channel_changed:
-        # Dołączył do nowego kanału – śledź tylko jeśli nie ogłuszony i nie AFK
         if after.channel and after.channel.id != AFK_CHANNEL_ID:
             if not _is_deaf(after):
                 tracker.join(member.id, member.display_name, after.channel.id, after.channel.name, now)
-        # Opuścił poprzedni kanał (nie AFK) – zakończ sesję
         if before.channel and before.channel.id != AFK_CHANNEL_ID:
             await tracker.leave(member.id, before.channel.id, now)
-
     elif deaf_changed and after.channel and after.channel.id != AFK_CHANNEL_ID:
         if _is_deaf(after):
-            # Ogłuszył się na kanale – zakończ sesję
             await tracker.leave(member.id, after.channel.id, now)
         else:
-            # Odgłuszył się na kanale – rozpocznij sesję
             tracker.join(member.id, member.display_name, after.channel.id, after.channel.name, now)
 
 # ── Zadania cykliczne ─────────────────────────────────────────────────────────
@@ -128,19 +117,16 @@ async def role_updater():
     for guild in bot.guilds:
         await _update_activity_roles(guild, announce=True)
 
-# ── Ogłoszenia Afazja ────────────────────────────────────────────────────────
+# ── Ogłoszenia Afazja ──────────────────────────────────────────────────────────
 
 @tasks.loop(minutes=1)
 async def afazja_announcer():
-    """Co minutę sprawdza czy czas wysłać ogłoszenie o Afazji (Pt i Sb)."""
     now = datetime.now(LOCAL_TZ)
-    wd  = now.weekday()  # 4=Pt, 5=Sb
-
+    wd  = now.weekday()
     if wd not in (4, 5):
         return
     if ANNOUNCE_CHANNEL_ID == 0:
         return
-
     if now.hour == 10 and now.minute == 0:
         await _send_afazja_main(wd)
     elif now.hour == 15 and now.minute == 0:
@@ -149,7 +135,6 @@ async def afazja_announcer():
         await _send_afazja_reminder_2()
 
 def _mentions() -> str:
-    """Buduje string z oznaczeniami rang."""
     parts = []
     for role_id in [ROLE_BROJLER_ID, ROLE_OPIERZONY_ID, ROLE_PISKLAK_ID]:
         if role_id:
@@ -157,15 +142,11 @@ def _mentions() -> str:
     return " ".join(parts)
 
 async def _send_afazja_main(weekday: int = 5):
-    """Główne ogłoszenie o Afazji – 10:00. weekday: 4=Pt, 5=Sb."""
     ch = bot.get_channel(ANNOUNCE_CHANNEL_ID)
     if not ch:
         return
     mentions = _mentions()
-    if weekday == 4:
-        title = "Nieloty, pora na piątkową afazję!"
-    else:
-        title = "Nieloty, pora na sobotnią afazję!"
+    title = "Nieloty, pora na piątkową afazję!" if weekday == 4 else "Nieloty, pora na sobotnią afazję!"
     opis = (
         "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**. "
         "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!\n\n"
@@ -179,7 +160,6 @@ async def _send_afazja_main(weekday: int = 5):
     await msg.add_reaction("🥚")
 
 async def _send_afazja_reminder_1():
-    """Pierwsze przypomnienie – 15:00."""
     ch = bot.get_channel(ANNOUNCE_CHANNEL_ID)
     if not ch:
         return
@@ -190,16 +170,12 @@ async def _send_afazja_reminder_1():
         "Do zobaczenia na kanale!\n\n"
         "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
     )
-    embed = discord.Embed(
-        title="Jeszcze tylko kilka godzin!",
-        description=opis,
-    )
+    embed = discord.Embed(title="Jeszcze tylko kilka godzin!", description=opis)
     if ANNOUNCE_IMAGE_URL:
         embed.set_image(url=ANNOUNCE_IMAGE_URL)
     await ch.send(content=mentions, embed=embed)
 
 async def _send_afazja_reminder_2():
-    """Drugie przypomnienie – 19:00."""
     ch = bot.get_channel(ANNOUNCE_CHANNEL_ID)
     if not ch:
         return
@@ -209,15 +185,12 @@ async def _send_afazja_reminder_2():
         "Do zobaczenia na grzędzi!\n\n"
         "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
     )
-    embed = discord.Embed(
-        title="Zaczynamy za chwilę!",
-        description=opis,
-    )
+    embed = discord.Embed(title="Zaczynamy za chwilę!", description=opis)
     if ANNOUNCE_IMAGE_URL:
         embed.set_image(url=ANNOUNCE_IMAGE_URL)
     await ch.send(content=mentions, embed=embed)
 
-# ── Logika raportów ───────────────────────────────────────────────────────────
+# ── Logika raportów ────────────────────────────────────────────────────────────
 
 async def _get_report_channel():
     if REPORT_CHANNEL_ID == 0:
@@ -280,7 +253,7 @@ async def _get_inactive_members() -> list[discord.Member]:
                 result.append(member)
     return sorted(result, key=lambda m: m.joined_at or datetime.min.replace(tzinfo=timezone.utc))
 
-# ── Logika ról aktywności ─────────────────────────────────────────────────────
+# ── System rang ────────────────────────────────────────────────────────────────
 
 async def _update_activity_roles(guild: discord.Guild, announce: bool = False):
     if not any([ROLE_PISKLAK_ID, ROLE_OPIERZONY_ID, ROLE_BROJLER_ID]):
@@ -305,32 +278,23 @@ async def _apply_roles(member: discord.Member, total_seconds: int, announce_ch):
                 await db.log_role_grant(member.id, member.display_name, "BROJLER", total_seconds)
                 if announce_ch:
                     await announce_ch.send(MSG_BROJLER.format(
-                        mention=member.mention,
-                        role=role_brojler.name,
-                        hours=THRESHOLD_BROJLER
-                    ))
+                        mention=member.mention, role=role_brojler.name, hours=THRESHOLD_BROJLER))
             if role_opierzony and role_opierzony in member.roles:
                 await member.remove_roles(role_opierzony, reason="Awans na BROJLER")
-
         elif total_seconds >= THRESHOLD_OPIERZONY * 3600 and role_opierzony:
-            # Nie nadawaj OPIERZONY jeśli osoba ma już rangę BROJLER
             has_brojler = role_brojler and role_brojler in member.roles
             if not has_brojler and role_opierzony not in member.roles:
                 await member.add_roles(role_opierzony, reason="Voice tracker – próg OPIERZONY")
                 await db.log_role_grant(member.id, member.display_name, "OPIERZONY", total_seconds)
                 if announce_ch:
                     await announce_ch.send(MSG_OPIERZONY.format(
-                        mention=member.mention,
-                        role=role_opierzony.name,
-                        hours=THRESHOLD_OPIERZONY
-                    ))
+                        mention=member.mention, role=role_opierzony.name, hours=THRESHOLD_OPIERZONY))
             if role_pisklak and role_pisklak in member.roles:
                 await member.remove_roles(role_pisklak, reason="Awans na OPIERZONY")
-
     except discord.Forbidden:
         pass
 
-# ── Komendy Discord ───────────────────────────────────────────────────────────
+# ── Komendy ────────────────────────────────────────────────────────────────────
 
 @bot.command(name="czas-tydzien", aliases=["czas-tydzień"])
 @has_stats_role()
@@ -378,79 +342,11 @@ async def stats_user(ctx, *, member: discord.Member = None):
     embed  = fmt.build_user_embed(rows, target.display_name)
     await ctx.send(embed=embed)
 
-@bot.command(name="wiadomosc-test", aliases=["wiadomość-test"])
-@commands.has_permissions(administrator=True)
-async def wiadomosc_test(ctx):
-    """Testowe wysłanie wszystkich wiadomości afazja na bieżącym kanale (tylko admin)."""
-    await ctx.message.delete()
-    ch = ctx.channel
-    mentions = _mentions()
-    opis_main = (
-        "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**. "
-        "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!\n\n"
-        "🕗 **Widzimy się tutaj:** <#1485261013434765376>\n\n"
-        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
-    )
-
-    await ctx.send(content="——— 📌 **WERSJA PIĄTKOWA** ———")
-    embed1a = discord.Embed(title="Nieloty, pora na piątkową afazję!", description=opis_main)
-    if ANNOUNCE_IMAGE_URL:
-        embed1a.set_image(url=ANNOUNCE_IMAGE_URL)
-    msg = await ch.send(content=mentions, embed=embed1a)
-    await msg.add_reaction("🥚")
-
-    await ctx.send(content="——— 📌 **WERSJA SOBOTNIA** ———")
-    embed1b = discord.Embed(title="Nieloty, pora na sobotnią afazję!", description=opis_main)
-    if ANNOUNCE_IMAGE_URL:
-        embed1b.set_image(url=ANNOUNCE_IMAGE_URL)
-    msg2 = await ch.send(content=mentions, embed=embed1b)
-    await msg2.add_reaction("🥚")
-
-    await ctx.send(content="——— 📌 **PIERWSZE PRZYPOMNIENIE (15:00)** ———")
-    opis2 = (
-        "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
-        "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
-        "Do zobaczenia na kanale!\n\n"
-        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
-    )
-    embed2 = discord.Embed(title="Jeszcze tylko kilka godzin!", description=opis2)
-    if ANNOUNCE_IMAGE_URL:
-        embed2.set_image(url=ANNOUNCE_IMAGE_URL)
-    await ch.send(content=mentions, embed=embed2)
-
-    await ctx.send(content="——— 📌 **DRUGIE PRZYPOMNIENIE (19:00)** ———")
-    opis3 = (
-        "Dość gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
-        "Do zobaczenia na grzędzi!\n\n"
-        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
-    )
-    embed3 = discord.Embed(title="Zaczynamy za chwilę!", description=opis3)
-    if ANNOUNCE_IMAGE_URL:
-        embed3.set_image(url=ANNOUNCE_IMAGE_URL)
-    await ch.send(content=mentions, embed=embed3)
-
-@bot.command(name="czas-test")
-@commands.has_permissions(administrator=True)
-async def test_all(ctx):
-    await ctx.send("🧪 Uruchamiam test wszystkich procesów...")
-    await _send_monthly_report()
-    await _send_quarterly_report()
-    TEST_USER_ID = 1505984621408551053
-    for guild in bot.guilds:
-        member = guild.get_member(TEST_USER_ID)
-        if member:
-            rows         = await db.get_stats(period="alltime")
-            user_seconds = {r["user_id"]: int(r["total_seconds"] or 0) for r in rows}
-            total        = user_seconds.get(TEST_USER_ID, 0)
-            await _apply_roles(member, total, bot.get_channel(ROLE_ANNOUNCE_ID) if ROLE_ANNOUNCE_ID else None)
-            await ctx.send(f"✅ Role dla **{member.display_name}** zaktualizowane.")
-    await ctx.send("✅ Test zakończony.")
-
 @bot.command(name="pomoc", aliases=["help"])
 @has_stats_role()
 async def help_cmd(ctx):
     embed = discord.Embed(title="📖 Komendy bota", color=discord.Color.blurple())
-    cmds = [
+    cmds  = [
         ("!czas-tydzień",     "Ranking aktywności – ostatnie 7 dni"),
         ("!czas-miesiąc",     "Ranking aktywności – ostatnie 30 dni"),
         ("!czas-kwartał",     "Ranking aktywności – ostatnie 3 miesiące"),
@@ -476,14 +372,16 @@ async def on_command_error(ctx, error):
     else:
         print(f"Błąd komendy: {error}")
 
-# ── HTTP API dla dashboardu ───────────────────────────────────────────────────
+# ── HTTP API dla dashboardu ────────────────────────────────────────────────────
 
 def _auth(request: web.Request) -> bool:
     return request.headers.get("Authorization", "") == f"Bearer {DASHBOARD_SECRET}"
 
 def _json(data) -> web.Response:
-    return web.Response(text=json.dumps(data, ensure_ascii=False, default=str),
-                        content_type="application/json")
+    return web.Response(
+        text=json.dumps(data, ensure_ascii=False, default=str),
+        content_type="application/json"
+    )
 
 async def api_stats(request):
     if not _auth(request): return web.Response(status=401)
@@ -524,7 +422,6 @@ async def api_online(request):
     } for uid, s in tracker.active.items()])
 
 async def api_member_roles(request):
-    """Aktualne rangi każdego membera z Discorda."""
     if not _auth(request): return web.Response(status=401)
     result = {}
     for guild in bot.guilds:
@@ -558,19 +455,19 @@ async def api_health(request):
 
 def build_app() -> web.Application:
     app = web.Application()
-    app.router.add_get("/api/health",          api_health)
-    app.router.add_get("/api/online",          api_online)
-    app.router.add_get("/api/stats/{period}",  api_stats)
-    app.router.add_get("/api/special",         api_special)
-    app.router.add_get("/api/reports",         api_reports)
-    app.router.add_get("/api/inactive",        api_inactive)
-    app.router.add_get("/api/role-grants",     api_role_grants)
-    app.router.add_get("/api/activity-chart",  api_activity_chart)
-    app.router.add_get("/api/member-roles",    api_member_roles)
-    app.router.add_get("/api/monthly-activity",api_monthly_activity)
-    app.router.add_get("/api/weekly-activity", api_weekly_activity)
-    app.router.add_get("/api/records",         api_records)
-    app.router.add_get("/api/server-stats",    api_server_stats)
+    app.router.add_get("/api/health",           api_health)
+    app.router.add_get("/api/online",           api_online)
+    app.router.add_get("/api/stats/{period}",   api_stats)
+    app.router.add_get("/api/special",          api_special)
+    app.router.add_get("/api/reports",          api_reports)
+    app.router.add_get("/api/inactive",         api_inactive)
+    app.router.add_get("/api/role-grants",      api_role_grants)
+    app.router.add_get("/api/activity-chart",   api_activity_chart)
+    app.router.add_get("/api/member-roles",     api_member_roles)
+    app.router.add_get("/api/monthly-activity", api_monthly_activity)
+    app.router.add_get("/api/weekly-activity",  api_weekly_activity)
+    app.router.add_get("/api/records",          api_records)
+    app.router.add_get("/api/server-stats",     api_server_stats)
     return app
 
 async def main():
