@@ -298,7 +298,7 @@ const PIE_COLORS = ['#5865f2','#57f287','#fee75c','#eb459e','#f97316'];
 
 let currentPeriod = 'week';
 let currentRankData = [];
-let memberRoles = {};  // { user_id: { roles: [...] } }
+let memberRoles = {};  // { display_name_lowercase: [role_names] }
 let pieChart, chartActivity, chartUsers;
 let onlineTimer;
 
@@ -365,7 +365,7 @@ document.querySelectorAll('.ni').forEach(ni => {
 });
 
 function loadPage(pg) {
-  if (pg==='rankings') { loadRankings('week'); loadOnline(); startOnlineTimer(); }
+  if (pg==='rankings') { loadRankings('week'); }
   if (pg==='chart')    loadCharts();
   if (pg==='reports')  loadReports();
   if (pg==='roles')    loadRoles();
@@ -382,8 +382,7 @@ function refreshCurrent() {
   setRefreshTime();
 }
 
-loadMemberRoles();
-loadPage('rankings');
+loadMemberRolesThenRankings();
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 
@@ -401,10 +400,23 @@ document.querySelectorAll('#period-tabs .tab').forEach(tab => {
 
 async function loadMemberRoles() {
   try {
-    memberRoles = await apiFetch('/api/member-roles');
+    const data = await apiFetch('/api/member-roles');
+    memberRoles = {};
+    for (const info of Object.values(data)) {
+      if (info.display_name) {
+        memberRoles[info.display_name.toLowerCase()] = info.roles.map(r => r.toUpperCase());
+      }
+    }
   } catch(e) {
     memberRoles = {};
   }
+}
+
+async function loadMemberRolesThenRankings() {
+  await loadMemberRoles();
+  loadPage('rankings');
+  loadOnline();
+  startOnlineTimer();
 }
 
 // ── Rankingi ──────────────────────────────────────────────────────────────
@@ -435,7 +447,7 @@ function renderRankings(data) {
   tbody.innerHTML = data.map((r,i) => {
     const secs = parseInt(r.total_seconds)||0;
     const rank = i<3 ? `<span class="medal">${MEDALS[i]}</span>` : `<span class="num-rank">${i+1}.</span>`;
-    const prog = renderProgress(secs, r.user_id);
+    const prog = renderProgress(secs, r.display_name);
     return `<tr>
       <td>${rank}</td>
       <td>${r.display_name||'–'}</td>
@@ -445,11 +457,10 @@ function renderRankings(data) {
   }).join('');
 }
 
-function getRoleStatus(userId, secs) {
+function getRoleStatus(displayName, secs) {
   // Sprawdź faktyczne rangi z Discorda — mają pierwszeństwo nad liczeniem sekund
-  const m = memberRoles[String(userId)];
-  if (m) {
-    const roles = m.roles.map(r => r.toUpperCase());
+  const roles = memberRoles[(displayName || '').toLowerCase()];
+  if (roles) {
     if (roles.includes('BROJLER'))   return 'brojler';
     if (roles.includes('OPIERZONY')) return 'opierzony';
   }
@@ -459,8 +470,8 @@ function getRoleStatus(userId, secs) {
   return 'pisklak';
 }
 
-function renderProgress(secs, userId) {
-  const status = getRoleStatus(userId, secs);
+function renderProgress(secs, displayName) {
+  const status = getRoleStatus(displayName, secs);
   if (status === 'brojler') {
     return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-done" style="width:100%"></div></div><div class="prog-label">BROJLER ✓</div></div>`;
   }
