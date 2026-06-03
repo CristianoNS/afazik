@@ -9,7 +9,7 @@ Bot pracuje w UTC; konwersja do strefy PL (UTC+1 / UTC+2) przez env TIMEZONE.
 """
 
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from database import Database
