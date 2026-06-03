@@ -10,7 +10,7 @@ import httpx
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 import asyncpg
 
@@ -152,6 +152,11 @@ async def api_inactive(request: Request):
 async def api_role_grants(request: Request):
     require_auth(request)
     return await bot_get("/api/role-grants")
+
+@app.get("/api/online")
+async def api_online(request: Request):
+    require_auth(request)
+    return await bot_get("/api/online")
 
 @app.get("/api/activity-chart")
 async def api_activity_chart(request: Request):
