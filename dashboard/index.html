@@ -131,7 +131,7 @@ tr:hover td { background: rgba(88,101,242,.04); }
 
 
 /* ── Chart ── */
-.chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+.chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 12px; position: relative; }
 .chart-title { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 14px; }
 .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
@@ -247,7 +247,7 @@ tr:hover td { background: rgba(88,101,242,.04); }
           <div class="panel">
             <div class="panel-hdr"><span class="panel-title">📊 Udział top 5</span></div>
             <div class="pie-body">
-              <canvas id="pieChart" height="200"></canvas>
+              <div style="position:relative;height:200px"><canvas id="pieChart"></canvas></div>
             </div>
           </div>
         </div>
@@ -259,21 +259,21 @@ tr:hover td { background: rgba(88,101,242,.04); }
       <div class="charts-grid">
         <div class="chart-wrap">
           <div class="chart-title">Dzienna aktywność głosowa – ostatnie 30 dni (godziny)</div>
-          <canvas id="activityChart" height="140"></canvas>
+          <div style="position:relative;height:200px"><canvas id="activityChart"></canvas></div>
         </div>
         <div class="chart-wrap">
           <div class="chart-title">Unikalnych użytkowników dziennie</div>
-          <canvas id="usersChart" height="140"></canvas>
+          <div style="position:relative;height:200px"><canvas id="usersChart"></canvas></div>
         </div>
       </div>
       <div class="charts-grid" style="margin-top:16px">
         <div class="chart-wrap">
           <div class="chart-title">Aktywność miesięczna – ostatni rok (godziny)</div>
-          <canvas id="monthlyChart" height="140"></canvas>
+          <div style="position:relative;height:200px"><canvas id="monthlyChart"></canvas></div>
         </div>
         <div class="chart-wrap">
           <div class="chart-title">Porównanie tygodni – ostatnie 8 (godziny)</div>
-          <canvas id="weeklyChart" height="140"></canvas>
+          <div style="position:relative;height:200px"><canvas id="weeklyChart"></canvas></div>
         </div>
       </div>
     </div>
@@ -587,7 +587,7 @@ async function loadCharts() {
     const chartCfg = (label, color, d) => ({
       type: 'bar',
       data: { labels, datasets: [{ label, data: d, backgroundColor: color+'33', borderColor: color, borderWidth: 2, borderRadius: 4 }] },
-      options: { responsive: true, plugins: { legend: { display: false } },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
         scales: { x: { ticks: { color:'#72767d', font:{size:10} }, grid: { color:'#1e2235' } },
                   y: { ticks: { color:'#72767d', font:{size:10} }, grid: { color:'#1e2235' } } } }
     });
