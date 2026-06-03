@@ -158,6 +158,11 @@ async def api_online(request: Request):
     require_auth(request)
     return await bot_get("/api/online")
 
+@app.get("/api/member-roles")
+async def api_member_roles(request: Request):
+    require_auth(request)
+    return await bot_get("/api/member-roles")
+
 @app.get("/api/activity-chart")
 async def api_activity_chart(request: Request):
     require_auth(request)
