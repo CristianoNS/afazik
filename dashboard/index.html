@@ -298,6 +298,7 @@ const PIE_COLORS = ['#5865f2','#57f287','#fee75c','#eb459e','#f97316'];
 
 let currentPeriod = 'week';
 let currentRankData = [];
+let memberRoles = {};  // { user_id: { roles: [...] } }
 let pieChart, chartActivity, chartUsers;
 let onlineTimer;
 
@@ -381,6 +382,7 @@ function refreshCurrent() {
   setRefreshTime();
 }
 
+loadMemberRoles();
 loadPage('rankings');
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
@@ -394,6 +396,16 @@ document.querySelectorAll('#period-tabs .tab').forEach(tab => {
     loadRankings(currentPeriod);
   });
 });
+
+// ── Role członków ─────────────────────────────────────────────────────────
+
+async function loadMemberRoles() {
+  try {
+    memberRoles = await apiFetch('/api/member-roles');
+  } catch(e) {
+    memberRoles = {};
+  }
+}
 
 // ── Rankingi ──────────────────────────────────────────────────────────────
 
@@ -423,7 +435,7 @@ function renderRankings(data) {
   tbody.innerHTML = data.map((r,i) => {
     const secs = parseInt(r.total_seconds)||0;
     const rank = i<3 ? `<span class="medal">${MEDALS[i]}</span>` : `<span class="num-rank">${i+1}.</span>`;
-    const prog = renderProgress(secs);
+    const prog = renderProgress(secs, r.user_id);
     return `<tr>
       <td>${rank}</td>
       <td>${r.display_name||'–'}</td>
@@ -433,17 +445,32 @@ function renderRankings(data) {
   }).join('');
 }
 
-function renderProgress(secs) {
-  if (secs >= THRESHOLDS.BROJLER) {
+function getRoleStatus(userId, secs) {
+  // Sprawdź faktyczne rangi z Discorda — mają pierwszeństwo nad liczeniem sekund
+  const m = memberRoles[String(userId)];
+  if (m) {
+    const roles = m.roles.map(r => r.toUpperCase());
+    if (roles.includes('BROJLER'))   return 'brojler';
+    if (roles.includes('OPIERZONY')) return 'opierzony';
+  }
+  // Fallback: przelicz z czasu
+  if (secs >= THRESHOLDS.BROJLER)   return 'brojler';
+  if (secs >= THRESHOLDS.OPIERZONY) return 'opierzony';
+  return 'pisklak';
+}
+
+function renderProgress(secs, userId) {
+  const status = getRoleStatus(userId, secs);
+  if (status === 'brojler') {
     return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-done" style="width:100%"></div></div><div class="prog-label">BROJLER ✓</div></div>`;
   }
-  if (secs >= THRESHOLDS.OPIERZONY) {
+  if (status === 'opierzony') {
     const pct = Math.min(100, Math.round((secs/THRESHOLDS.BROJLER)*100));
-    const rem = fmtTime(THRESHOLDS.BROJLER - secs);
-    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-br" style="width:${pct}%"></div></div><div class="prog-label">brak ${rem} do BROJLER</div></div>`;
+    const rem = fmtTime(Math.max(0, THRESHOLDS.BROJLER - secs));
+    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-br" style="width:${pct}%"></div></div><div class="prog-label">OPIERZONY ✓${secs < THRESHOLDS.BROJLER ? ' · brak '+rem+' do BROJLER' : ''}</div></div>`;
   }
   const pct = Math.min(100, Math.round((secs/THRESHOLDS.OPIERZONY)*100));
-  const rem = fmtTime(THRESHOLDS.OPIERZONY - secs);
+  const rem = fmtTime(Math.max(0, THRESHOLDS.OPIERZONY - secs));
   return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-op" style="width:${pct}%"></div></div><div class="prog-label">brak ${rem} do OPIERZONY</div></div>`;
 }
 
