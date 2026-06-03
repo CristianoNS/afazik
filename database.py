@@ -181,6 +181,123 @@ class Database:
                 VALUES ($1,$2,$3,$4)
             """, user_id, display_name, role_name, total_seconds)
 
+
+    async def get_monthly_activity(self, months: int = 12) -> list[dict]:
+        """Aktywność miesięczna – do wykresu porównawczego."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(f"""
+                SELECT
+                    TO_CHAR(DATE_TRUNC('month', joined_at AT TIME ZONE 'Europe/Warsaw'), 'YYYY-MM') AS month,
+                    SUM(COALESCE(duration_s, 0)) AS total_seconds,
+                    COUNT(DISTINCT user_id) AS unique_users
+                FROM voice_sessions
+                WHERE joined_at >= NOW() - INTERVAL '{months} months'
+                  AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                GROUP BY DATE_TRUNC('month', joined_at AT TIME ZONE 'Europe/Warsaw')
+                ORDER BY 1 ASC
+            """)
+            return [dict(r) for r in rows]
+
+    async def get_weekly_activity(self, weeks: int = 8) -> list[dict]:
+        """Aktywność tygodniowa – do wykresu porównawczego."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(f"""
+                SELECT
+                    TO_CHAR(DATE_TRUNC('week', joined_at AT TIME ZONE 'Europe/Warsaw'), 'YYYY-MM-DD') AS week,
+                    SUM(COALESCE(duration_s, 0)) AS total_seconds,
+                    COUNT(DISTINCT user_id) AS unique_users
+                FROM voice_sessions
+                WHERE joined_at >= NOW() - INTERVAL '{weeks} weeks'
+                  AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                GROUP BY DATE_TRUNC('week', joined_at AT TIME ZONE 'Europe/Warsaw')
+                ORDER BY 1 ASC
+            """)
+            return [dict(r) for r in rows]
+
+    async def get_records(self) -> dict:
+        """Rekordy serwera."""
+        async with self.pool.acquire() as conn:
+            longest = await conn.fetchrow("""
+                SELECT display_name, duration_s FROM voice_sessions
+                WHERE duration_s IS NOT NULL ORDER BY duration_s DESC LIMIT 1
+            """)
+            best_day = await conn.fetchrow("""
+                SELECT DATE(joined_at AT TIME ZONE 'Europe/Warsaw') AS day,
+                       SUM(COALESCE(duration_s,0)) AS total_seconds
+                FROM voice_sessions WHERE left_at IS NOT NULL OR duration_s IS NOT NULL
+                GROUP BY day ORDER BY total_seconds DESC LIMIT 1
+            """)
+            best_week = await conn.fetchrow("""
+                SELECT DATE_TRUNC('week', joined_at AT TIME ZONE 'Europe/Warsaw') AS week,
+                       SUM(COALESCE(duration_s,0)) AS total_seconds
+                FROM voice_sessions WHERE left_at IS NOT NULL OR duration_s IS NOT NULL
+                GROUP BY week ORDER BY total_seconds DESC LIMIT 1
+            """)
+            leader = await conn.fetchrow("""
+                SELECT (SELECT display_name FROM voice_sessions v2 WHERE v2.user_id=vs.user_id
+                        ORDER BY joined_at DESC LIMIT 1) AS display_name,
+                       SUM(COALESCE(duration_s,0)) AS total_seconds
+                FROM voice_sessions vs
+                WHERE left_at IS NOT NULL OR duration_s IS NOT NULL
+                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 1
+            """)
+            afazja_leader = await conn.fetchrow("""
+                SELECT (SELECT display_name FROM voice_sessions v2 WHERE v2.user_id=vs.user_id
+                        ORDER BY joined_at DESC LIMIT 1) AS display_name,
+                       SUM(COALESCE(duration_s,0)) AS total_seconds
+                FROM voice_sessions vs WHERE is_special=TRUE
+                  AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 1
+            """)
+            last_grant = await conn.fetchrow("""
+                SELECT display_name, role_name, granted_at FROM role_grants
+                ORDER BY granted_at DESC LIMIT 1
+            """)
+            return {
+                "longest_session": dict(longest) if longest else None,
+                "best_day":        dict(best_day) if best_day else None,
+                "best_week":       dict(best_week) if best_week else None,
+                "leader":          dict(leader) if leader else None,
+                "afazja_leader":   dict(afazja_leader) if afazja_leader else None,
+                "last_grant":      dict(last_grant) if last_grant else None,
+            }
+
+    async def get_server_stats(self) -> dict:
+        """Zbiorcze statystyki serwera."""
+        async with self.pool.acquire() as conn:
+            total = await conn.fetchrow("""
+                SELECT SUM(COALESCE(duration_s,0)) AS total_seconds,
+                       COUNT(DISTINCT user_id) AS total_users
+                FROM voice_sessions WHERE left_at IS NOT NULL OR duration_s IS NOT NULL
+            """)
+            best_day = await conn.fetchrow("""
+                SELECT DATE(joined_at AT TIME ZONE 'Europe/Warsaw') AS day,
+                       SUM(COALESCE(duration_s,0)) AS total_seconds
+                FROM voice_sessions WHERE left_at IS NOT NULL OR duration_s IS NOT NULL
+                GROUP BY day ORDER BY total_seconds DESC LIMIT 1
+            """)
+            dow = await conn.fetchrow("""
+                SELECT EXTRACT(DOW FROM joined_at AT TIME ZONE 'Europe/Warsaw')::int AS dow,
+                       AVG(daily_total) AS avg_seconds
+                FROM (
+                    SELECT DATE(joined_at AT TIME ZONE 'Europe/Warsaw') AS day,
+                           EXTRACT(DOW FROM joined_at AT TIME ZONE 'Europe/Warsaw')::int AS dow,
+                           SUM(COALESCE(duration_s,0)) AS daily_total
+                    FROM voice_sessions WHERE left_at IS NOT NULL OR duration_s IS NOT NULL
+                    GROUP BY day, dow
+                ) d GROUP BY dow ORDER BY avg_seconds DESC LIMIT 1
+            """)
+            dow_names = ['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota']
+            ts = int(total["total_seconds"] or 0)
+            tu = int(total["total_users"] or 0)
+            return {
+                "total_seconds":         ts,
+                "total_users":           tu,
+                "avg_seconds_per_user":  ts // max(1, tu),
+                "best_day":              dict(best_day) if best_day else None,
+                "most_active_dow":       dow_names[int(dow["dow"])] if dow else "–",
+            }
+
     async def get_role_grants(self) -> list[dict]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
