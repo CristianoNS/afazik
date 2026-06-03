@@ -145,6 +145,18 @@ tr:hover td { background: rgba(88,101,242,.04); }
 #toast.ok  { border-color: var(--accent2); color: var(--accent2); }
 #toast.err { border-color: var(--danger); color: var(--danger); }
 
+.rank-pill { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border2); background: transparent; color: var(--muted); transition: all .15s; white-space: nowrap; }
+.rank-pill:hover { color: var(--text); }
+.rank-pill.active { background: rgba(88,101,242,.15); border-color: var(--accent); color: var(--accent); }
+.rank-pill[data-rank="BROJLER"].active { background: rgba(254,231,92,.12); border-color: var(--accent3); color: var(--accent3); }
+.rank-pill[data-rank="OPIERZONY"].active { background: rgba(87,242,135,.12); border-color: var(--accent2); color: var(--accent2); }
+.rank-pill[data-rank="PISKLAK"].active { background: rgba(235,69,158,.1); border-color: var(--accent4); color: var(--accent4); }
+.rec-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+.rec-icon { font-size: 26px; margin-bottom: 8px; }
+.rec-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+.rec-val { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.rec-sub { font-size: 11px; color: var(--muted); }
+
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   .sidebar { display: none; }
@@ -191,12 +203,20 @@ tr:hover td { background: rgba(88,101,242,.04); }
 
     <!-- ── Rankingi ── -->
     <div class="page active" id="page-rankings">
+      <div class="stat-grid" id="server-stat-grid"></div>
       <div class="stat-grid" id="stat-grid"></div>
 
       <div class="two-col">
         <div style="display:flex;flex-direction:column;gap:14px">
           <div class="panel">
             <div class="panel-hdr">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+                <span style="font-size:11px;color:var(--muted)">Ranga:</span>
+                <span class="rank-pill active" data-rank="all" onclick="setRankFilter(this,'all')">Wszyscy</span>
+                <span class="rank-pill" data-rank="BROJLER" onclick="setRankFilter(this,'BROJLER')">BROJLER</span>
+                <span class="rank-pill" data-rank="OPIERZONY" onclick="setRankFilter(this,'OPIERZONY')">OPIERZONY</span>
+                <span class="rank-pill" data-rank="PISKLAK" onclick="setRankFilter(this,'PISKLAK')">PISKLAK</span>
+              </div>
               <div class="tabs" id="period-tabs">
                 <div class="tab active" data-period="week">7 dni</div>
                 <div class="tab" data-period="month">30 dni</div>
@@ -246,6 +266,16 @@ tr:hover td { background: rgba(88,101,242,.04); }
           <canvas id="usersChart" height="140"></canvas>
         </div>
       </div>
+      <div class="charts-grid" style="margin-top:16px">
+        <div class="chart-wrap">
+          <div class="chart-title">Aktywność miesięczna – ostatni rok (godziny)</div>
+          <canvas id="monthlyChart" height="140"></canvas>
+        </div>
+        <div class="chart-wrap">
+          <div class="chart-title">Porównanie tygodni – ostatnie 8 (godziny)</div>
+          <canvas id="weeklyChart" height="140"></canvas>
+        </div>
+      </div>
     </div>
 
     <!-- ── Raporty ── -->
@@ -271,6 +301,12 @@ tr:hover td { background: rgba(88,101,242,.04); }
       </div>
     </div>
 
+    <!-- ── Rekordy ── -->
+    <div class="page" id="page-records">
+      <div class="stat-grid" id="records-stat-grid" style="grid-template-columns:repeat(3,1fr)"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px" id="records-grid"></div>
+    </div>
+
     <!-- ── Nieaktywni ── -->
     <div class="page" id="page-inactive">
       <div class="stat-grid" id="inactive-cards"></div>
@@ -293,12 +329,12 @@ tr:hover td { background: rgba(88,101,242,.04); }
 const THRESHOLDS = { OPIERZONY: 48 * 3600, BROJLER: 96 * 3600 };
 const MEDALS = ['🥇','🥈','🥉'];
 const PERIOD_LABELS = { week:'7 dni', month:'30 dni', quarter:'Kwartał', alltime:'All time', special:'Afazja' };
-const PAGE_TITLES = { rankings:'Rankingi aktywności', chart:'Wykresy aktywności', reports:'Historia raportów', roles:'Przyznane rangi', inactive:'Nieaktywni członkowie' };
+const PAGE_TITLES = { rankings:'Rankingi aktywności', chart:'Wykresy aktywności', reports:'Historia raportów', roles:'Przyznane rangi', inactive:'Nieaktywni członkowie', records:'Rekordy serwera' };
 const PIE_COLORS = ['#5865f2','#57f287','#fee75c','#eb459e','#f97316'];
 
 let currentPeriod = 'week';
 let currentRankData = [];
-let memberRoles = {};  // { display_name_lowercase: [role_names] }
+let memberRoles = {};
 let pieChart, chartActivity, chartUsers;
 let onlineTimer;
 
@@ -366,10 +402,11 @@ document.querySelectorAll('.ni').forEach(ni => {
 
 function loadPage(pg) {
   if (pg==='rankings') { loadRankings('week'); }
-  if (pg==='chart')    loadCharts();
+  if (pg==='chart')    { loadCharts(); loadComparisonCharts(); }
   if (pg==='reports')  loadReports();
   if (pg==='roles')    loadRoles();
   if (pg==='inactive') loadInactive();
+  if (pg==='records')  loadRecords();
 }
 
 function refreshCurrent() {
@@ -382,7 +419,7 @@ function refreshCurrent() {
   setRefreshTime();
 }
 
-loadMemberRolesThenRankings();
+loadPage('rankings');
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 
@@ -396,29 +433,6 @@ document.querySelectorAll('#period-tabs .tab').forEach(tab => {
   });
 });
 
-// ── Role członków ─────────────────────────────────────────────────────────
-
-async function loadMemberRoles() {
-  try {
-    const data = await apiFetch('/api/member-roles');
-    memberRoles = {};
-    for (const info of Object.values(data)) {
-      if (info.display_name) {
-        memberRoles[info.display_name.toLowerCase()] = info.roles.map(r => r.toUpperCase());
-      }
-    }
-  } catch(e) {
-    memberRoles = {};
-  }
-}
-
-async function loadMemberRolesThenRankings() {
-  await loadMemberRoles();
-  loadPage('rankings');
-  loadOnline();
-  startOnlineTimer();
-}
-
 // ── Rankingi ──────────────────────────────────────────────────────────────
 
 async function loadRankings(period) {
@@ -431,6 +445,7 @@ async function loadRankings(period) {
     renderRankings(data);
     renderStatCards(data);
     renderPie(data);
+    if (activeRankFilter !== 'all') applyRankFilter();
     setRefreshTime();
   } catch(e) {
     tbody.innerHTML = `<tr><td colspan="4" class="loading" style="color:var(--danger)">Błąd ładowania danych.</td></tr>`;
@@ -447,7 +462,7 @@ function renderRankings(data) {
   tbody.innerHTML = data.map((r,i) => {
     const secs = parseInt(r.total_seconds)||0;
     const rank = i<3 ? `<span class="medal">${MEDALS[i]}</span>` : `<span class="num-rank">${i+1}.</span>`;
-    const prog = renderProgress(secs, r.display_name);
+    const prog = renderProgress(secs);
     return `<tr>
       <td>${rank}</td>
       <td>${r.display_name||'–'}</td>
@@ -457,32 +472,18 @@ function renderRankings(data) {
   }).join('');
 }
 
-function getRoleStatus(displayName, secs) {
-  // Sprawdź faktyczne rangi z Discorda — mają pierwszeństwo nad liczeniem sekund
-  const roles = memberRoles[(displayName || '').toLowerCase()];
-  if (roles) {
-    if (roles.includes('BROJLER'))   return 'brojler';
-    if (roles.includes('OPIERZONY')) return 'opierzony';
-  }
-  // Fallback: przelicz z czasu
-  if (secs >= THRESHOLDS.BROJLER)   return 'brojler';
-  if (secs >= THRESHOLDS.OPIERZONY) return 'opierzony';
-  return 'pisklak';
-}
-
-function renderProgress(secs, displayName) {
-  const status = getRoleStatus(displayName, secs);
-  if (status === 'brojler') {
+function renderProgress(secs) {
+  if (secs >= THRESHOLDS.BROJLER) {
     return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-done" style="width:100%"></div></div><div class="prog-label">BROJLER ✓</div></div>`;
   }
-  if (status === 'opierzony') {
+  if (secs >= THRESHOLDS.OPIERZONY) {
     const pct = Math.min(100, Math.round((secs/THRESHOLDS.BROJLER)*100));
-    const rem = fmtTime(Math.max(0, THRESHOLDS.BROJLER - secs));
-    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-br" style="width:${pct}%"></div></div><div class="prog-label">OPIERZONY ✓${secs < THRESHOLDS.BROJLER ? ' · '+rem+' do BROJLER' : ''}</div></div>`;
+    const rem = fmtTime(THRESHOLDS.BROJLER - secs);
+    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-br" style="width:${pct}%"></div></div><div class="prog-label">brak ${rem} do BROJLER</div></div>`;
   }
   const pct = Math.min(100, Math.round((secs/THRESHOLDS.OPIERZONY)*100));
-  const rem = fmtTime(Math.max(0, THRESHOLDS.OPIERZONY - secs));
-  return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-op" style="width:${pct}%"></div></div><div class="prog-label">${rem} do OPIERZONY</div></div>`;
+  const rem = fmtTime(THRESHOLDS.OPIERZONY - secs);
+  return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-op" style="width:${pct}%"></div></div><div class="prog-label">brak ${rem} do OPIERZONY</div></div>`;
 }
 
 function renderStatCards(data) {
@@ -653,6 +654,130 @@ async function loadInactive() {
     </tr>`).join('');
   } catch(e) { tbody.innerHTML='<tr><td colspan="3" class="loading" style="color:var(--danger)">Błąd.</td></tr>'; }
 }
+
+// ── Filtr rang ─────────────────────────────────────────────────────────────
+
+let activeRankFilter = 'all';
+
+function setRankFilter(el, rank) {
+  document.querySelectorAll('.rank-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  activeRankFilter = rank;
+  applyRankFilter();
+}
+
+function applyRankFilter() {
+  document.querySelectorAll('#ranking-body tr').forEach(row => {
+    if (activeRankFilter === 'all') { row.style.display = ''; return; }
+    const name = row.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
+    const roles = memberRoles[name.toLowerCase()] || [];
+    const secs = parseInt(currentRankData.find(r => r.display_name === name)?.total_seconds || 0);
+    const status = getRoleStatus(name, secs).toUpperCase();
+    row.style.display = (roles.includes(activeRankFilter) || status === activeRankFilter) ? '' : 'none';
+  });
+}
+
+// ── Statystyki serwera ──────────────────────────────────────────────────────
+
+async function loadServerStats() {
+  try {
+    const d = await apiFetch('/api/server-stats');
+    const best = d.best_day;
+    document.getElementById('server-stat-grid').innerHTML = `
+      <div class="stat-card sc-blue">
+        <div class="sc-label">Łączny czas serwera</div>
+        <div class="sc-value">${fmtTime(d.total_seconds)}</div>
+        <div class="sc-sub">wszyscy członkowie</div>
+      </div>
+      <div class="stat-card sc-green">
+        <div class="sc-label">Średnia na osobę</div>
+        <div class="sc-value" style="font-size:18px">${fmtTime(d.avg_seconds_per_user)}</div>
+        <div class="sc-sub">z ${d.total_users} aktywnych</div>
+      </div>
+      <div class="stat-card sc-yellow">
+        <div class="sc-label">Rekord dobowy</div>
+        <div class="sc-value" style="font-size:18px">${best ? fmtTime(best.total_seconds) : '–'}</div>
+        <div class="sc-sub">${best ? new Date(best.day).toLocaleDateString('pl-PL') : ''}</div>
+      </div>
+      <div class="stat-card sc-pink">
+        <div class="sc-label">Najaktywniejszy dzień</div>
+        <div class="sc-value" style="font-size:18px">${d.most_active_dow}</div>
+        <div class="sc-sub">historycznie</div>
+      </div>
+    `;
+  } catch(e) { console.error('server-stats', e); }
+}
+
+// ── Rekordy ────────────────────────────────────────────────────────────────
+
+async function loadRecords() {
+  try {
+    const d = await apiFetch('/api/records');
+    const card = (icon, label, val, sub) =>
+      `<div class="rec-card"><div class="rec-icon">${icon}</div><div class="rec-lbl">${label}</div><div class="rec-val">${val}</div><div class="rec-sub">${sub}</div></div>`;
+    document.getElementById('records-grid').innerHTML = [
+      card('🏆', 'Najwięcej godzin ogółem', d.leader?.display_name||'–', d.leader ? fmtTime(d.leader.total_seconds)+' łącznie' : ''),
+      card('⚡', 'Najdłuższa pojedyncza sesja', d.longest_session?.display_name||'–', d.longest_session ? fmtTime(d.longest_session.duration_s) : ''),
+      card('🎉', 'Król Afazji', d.afazja_leader?.display_name||'–', d.afazja_leader ? fmtTime(d.afazja_leader.total_seconds)+' na Afazji' : ''),
+      card('📅', 'Rekordowy dzień serwera', d.best_day ? fmtTime(d.best_day.total_seconds) : '–', d.best_day ? new Date(d.best_day.day).toLocaleDateString('pl-PL') : ''),
+      card('🔥', 'Rekordowy tydzień serwera', d.best_week ? fmtTime(d.best_week.total_seconds) : '–', d.best_week ? 'od '+new Date(d.best_week.week).toLocaleDateString('pl-PL') : ''),
+      card('🐣', 'Ostatni awans rangi', d.last_grant?.display_name||'–', d.last_grant ? d.last_grant.role_name+' · '+new Date(d.last_grant.granted_at).toLocaleDateString('pl-PL') : ''),
+    ].join('');
+    document.getElementById('records-stat-grid').innerHTML = `
+      <div class="stat-card sc-blue"><div class="sc-label">Lider wszechczasów</div><div class="sc-value" style="font-size:18px">${d.leader?.display_name||'–'}</div><div class="sc-sub">${d.leader?fmtTime(d.leader.total_seconds):''}</div></div>
+      <div class="stat-card sc-yellow"><div class="sc-label">Najdłuższa sesja</div><div class="sc-value" style="font-size:18px">${d.longest_session?fmtTime(d.longest_session.duration_s):'–'}</div><div class="sc-sub">${d.longest_session?.display_name||''}</div></div>
+      <div class="stat-card sc-pink"><div class="sc-label">Rekord dobowy</div><div class="sc-value" style="font-size:18px">${d.best_day?fmtTime(d.best_day.total_seconds):'–'}</div><div class="sc-sub">${d.best_day?new Date(d.best_day.day).toLocaleDateString('pl-PL'):''}</div></div>
+    `;
+  } catch(e) { console.error('records', e); }
+}
+
+// ── Wykresy porównawcze ────────────────────────────────────────────────────
+
+let chartMonthly, chartWeekly;
+
+async function loadComparisonCharts() {
+  try {
+    const [monthly, weekly] = await Promise.all([apiFetch('/api/monthly-activity'), apiFetch('/api/weekly-activity')]);
+    const gridColor = 'rgba(46,51,84,.7)', tickColor = '#72767d';
+    const MONTHS = ['Sty','Lut','Mar','Kwi','Maj','Cze','Lip','Sie','Wrz','Paź','Lis','Gru'];
+    const mLabels = monthly.map(r => MONTHS[parseInt(r.month.split('-')[1])-1]);
+    const mData   = monthly.map(r => +((parseInt(r.total_seconds)||0)/3600).toFixed(1));
+    if (chartMonthly) chartMonthly.destroy();
+    chartMonthly = new Chart(document.getElementById('monthlyChart'), {
+      type: 'line',
+      data: { labels: mLabels, datasets: [{ label:'Godziny', data: mData, borderColor:'#5865f2', borderWidth:2, pointBackgroundColor:'#5865f2', pointRadius:4, tension:0.4, fill:true, backgroundColor:'rgba(88,101,242,0.10)' }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ticks:{color:tickColor,font:{size:10}},grid:{color:gridColor}}, y:{ticks:{color:tickColor,font:{size:10}},grid:{color:gridColor},beginAtZero:true} } }
+    });
+    const wLabels = weekly.map((_, i) => i === weekly.length-1 ? 'Ten tydz.' : `T-${weekly.length-1-i}`);
+    const wData   = weekly.map(r => +((parseInt(r.total_seconds)||0)/3600).toFixed(1));
+    const wColors = wData.map((_,i) => i===wData.length-1 ? '#57f287' : 'rgba(87,242,135,0.35)');
+    if (chartWeekly) chartWeekly.destroy();
+    chartWeekly = new Chart(document.getElementById('weeklyChart'), {
+      type: 'bar',
+      data: { labels: wLabels, datasets: [{ label:'Godziny', data: wData, backgroundColor: wColors, borderColor: wColors, borderWidth:1, borderRadius:4 }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ticks:{color:tickColor,font:{size:10}},grid:{color:gridColor}}, y:{ticks:{color:tickColor,font:{size:10}},grid:{color:gridColor},beginAtZero:true} } }
+    });
+  } catch(e) { console.error('comparison charts', e); }
+}
+
+// ── loadMemberRoles (zastąp istniejącą) ───────────────────────────────────
+
+async function loadMemberRoles() {
+  try {
+    const data = await apiFetch('/api/member-roles');
+    memberRoles = {};
+    for (const info of Object.values(data)) {
+      if (info.display_name) memberRoles[info.display_name.toLowerCase()] = info.roles.map(r=>r.toUpperCase());
+    }
+  } catch(e) { memberRoles = {}; }
+}
+
+async function loadMemberRolesThenRankings() {
+  await loadMemberRoles();
+  loadPage('rankings');
+  loadServerStats();
+  loadOnline();
+  startOnlineTimer();
+}
+
 </script>
-</body>
-</html>
