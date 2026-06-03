@@ -99,8 +99,6 @@ tr:last-child td { border-bottom: none; }
 tr:hover td { background: rgba(88,101,242,.04); }
 .medal { font-size: 16px; }
 .num-rank { color: var(--muted); font-size: 12px; }
-.user-link { color: var(--text); cursor: pointer; transition: color .15s; }
-.user-link:hover { color: var(--accent); text-decoration: underline; }
 .time-badge { background: rgba(88,101,242,.15); color: var(--accent); padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; }
 .loading { color: var(--muted); padding: 40px; text-align: center; }
 
@@ -131,28 +129,6 @@ tr:hover td { background: rgba(88,101,242,.04); }
 /* ── Pie chart ── */
 .pie-body { padding: 16px 18px; }
 
-/* ── User profile panel ── */
-.profile-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: none; }
-.profile-panel.visible { display: block; }
-.pp-hdr { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
-.pp-avatar { width: 38px; height: 38px; border-radius: 50%; background: rgba(88,101,242,.2); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
-.pp-name { font-size: 14px; font-weight: 600; color: #fff; }
-.pp-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
-.pp-close { margin-left: auto; background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; padding: 2px; }
-.pp-close:hover { color: var(--danger); }
-.pp-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border-top: none; }
-.pp-stat { background: var(--card); padding: 12px 16px; }
-.pp-stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
-.pp-stat-val { font-size: 16px; font-weight: 600; color: var(--text); }
-.pp-stat-val.b { color: var(--accent); }
-.pp-stat-val.g { color: var(--accent2); }
-.pp-stat-val.y { color: var(--accent3); }
-.pp-stat-val.p { color: var(--accent4); }
-.pp-progress { padding: 12px 18px; border-top: 1px solid var(--border); }
-.pp-prog-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
-.pp-prog-bar { height: 6px; background: var(--border2); border-radius: 3px; overflow: hidden; margin-bottom: 5px; }
-.pp-prog-fill { height: 100%; border-radius: 3px; background: var(--accent3); transition: width .4s; }
-.pp-prog-text { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
 
 /* ── Chart ── */
 .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
@@ -237,20 +213,6 @@ tr:hover td { background: rgba(88,101,242,.04); }
               <thead><tr><th>#</th><th>Użytkownik</th><th>Czas łącznie</th><th>Do następnej rangi</th></tr></thead>
               <tbody id="ranking-body"><tr><td colspan="4" class="loading">Ładowanie...</td></tr></tbody>
             </table>
-          </div>
-
-          <!-- Profil użytkownika -->
-          <div class="profile-panel" id="profile-panel">
-            <div class="pp-hdr">
-              <div class="pp-avatar" id="pp-avatar">?</div>
-              <div>
-                <div class="pp-name" id="pp-name">—</div>
-                <div class="pp-sub">Statystyki szczegółowe</div>
-              </div>
-              <button class="pp-close" onclick="closeProfile()">✕</button>
-            </div>
-            <div class="pp-stats" id="pp-stats"></div>
-            <div class="pp-progress" id="pp-progress"></div>
           </div>
         </div>
 
@@ -412,7 +374,6 @@ function loadPage(pg) {
 function refreshCurrent() {
   const active = document.querySelector('.ni.active')?.dataset.page || 'rankings';
   loaded[active] = false;
-  closeProfile();
   const btn = document.getElementById('refresh-btn');
   btn.classList.add('spin');
   setTimeout(()=>btn.classList.remove('spin'), 600);
@@ -429,7 +390,6 @@ document.querySelectorAll('#period-tabs .tab').forEach(tab => {
     document.querySelectorAll('#period-tabs .tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
     currentPeriod = tab.dataset.period;
-    closeProfile();
     document.getElementById('search-box').value = '';
     loadRankings(currentPeriod);
   });
@@ -466,7 +426,7 @@ function renderRankings(data) {
     const prog = renderProgress(secs);
     return `<tr>
       <td>${rank}</td>
-      <td><span class="user-link" onclick="openProfile(${JSON.stringify(r).replace(/"/g,'&quot;')})">${r.display_name||'–'}</span></td>
+      <td>${r.display_name||'–'}</td>
       <td><span class="time-badge">${fmtTime(secs)}</span></td>
       <td>${prog}</td>
     </tr>`;
@@ -515,42 +475,7 @@ function exportCSV() {
   toast('Plik CSV pobrany ✓');
 }
 
-// ── Profil użytkownika ──────────────────────────────────────────────────────
 
-function openProfile(row) {
-  const name = row.display_name || '–';
-  const secs = parseInt(row.total_seconds)||0;
-  document.getElementById('pp-avatar').textContent = initials(name);
-  document.getElementById('pp-name').textContent = name;
-
-  const statsEl = document.getElementById('pp-stats');
-  statsEl.innerHTML = `
-    <div class="pp-stat"><div class="pp-stat-label">Ten okres</div><div class="pp-stat-val b">${fmtTime(secs)}</div></div>
-    <div class="pp-stat"><div class="pp-stat-label">Okres</div><div class="pp-stat-val" style="color:var(--muted)">${PERIOD_LABELS[currentPeriod]||currentPeriod}</div></div>
-    <div class="pp-stat"><div class="pp-stat-label">Pozycja w rankingu</div><div class="pp-stat-val g">#${(currentRankData.findIndex(r=>r.display_name===name)+1)||'–'}</div></div>
-    <div class="pp-stat"><div class="pp-stat-label">Status rangi</div><div class="pp-stat-val ${secs>=THRESHOLDS.BROJLER?'y':secs>=THRESHOLDS.OPIERZONY?'g':''}">${secs>=THRESHOLDS.BROJLER?'BROJLER':secs>=THRESHOLDS.OPIERZONY?'OPIERZONY':'PISKLAK'}</div></div>
-  `;
-
-  const progEl = document.getElementById('pp-progress');
-  if (secs >= THRESHOLDS.BROJLER) {
-    progEl.innerHTML = `<div class="pp-prog-label">Maksymalna ranga osiągnięta 🏆</div><div class="pp-prog-bar"><div class="pp-prog-fill" style="width:100%;background:var(--accent4)"></div></div>`;
-  } else {
-    const target = secs>=THRESHOLDS.OPIERZONY ? THRESHOLDS.BROJLER : THRESHOLDS.OPIERZONY;
-    const targetName = secs>=THRESHOLDS.OPIERZONY ? 'BROJLER' : 'OPIERZONY';
-    const pct = Math.min(100, Math.round((secs/target)*100));
-    const color = secs>=THRESHOLDS.OPIERZONY ? 'var(--accent3)' : 'var(--accent2)';
-    progEl.innerHTML = `
-      <div class="pp-prog-label">Postęp do rangi ${targetName}</div>
-      <div class="pp-prog-bar"><div class="pp-prog-fill" style="width:${pct}%;background:${color}"></div></div>
-      <div class="pp-prog-text"><span>${fmtTime(secs)}</span><span>${fmtTime(target)}</span></div>
-    `;
-  }
-
-  document.getElementById('profile-panel').classList.add('visible');
-}
-
-function closeProfile() {
-  document.getElementById('profile-panel').classList.remove('visible');
 }
 
 // ── Online teraz ───────────────────────────────────────────────────────────
