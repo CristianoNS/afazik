@@ -478,11 +478,11 @@ function renderProgress(secs, displayName) {
   if (status === 'opierzony') {
     const pct = Math.min(100, Math.round((secs/THRESHOLDS.BROJLER)*100));
     const rem = fmtTime(Math.max(0, THRESHOLDS.BROJLER - secs));
-    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-br" style="width:${pct}%"></div></div><div class="prog-label">OPIERZONY ✓${secs < THRESHOLDS.BROJLER ? ' · brak '+rem+' do BROJLER' : ''}</div></div>`;
+    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-br" style="width:${pct}%"></div></div><div class="prog-label">OPIERZONY ✓${secs < THRESHOLDS.BROJLER ? ' · '+rem+' do BROJLER' : ''}</div></div>`;
   }
   const pct = Math.min(100, Math.round((secs/THRESHOLDS.OPIERZONY)*100));
   const rem = fmtTime(Math.max(0, THRESHOLDS.OPIERZONY - secs));
-  return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-op" style="width:${pct}%"></div></div><div class="prog-label">brak ${rem} do OPIERZONY</div></div>`;
+  return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-op" style="width:${pct}%"></div></div><div class="prog-label">${rem} do OPIERZONY</div></div>`;
 }
 
 function renderStatCards(data) {
