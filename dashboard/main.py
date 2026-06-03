@@ -178,6 +178,11 @@ async def api_server_stats(request: Request):
     require_auth(request)
     return await bot_get("/api/server-stats")
 
+@app.get("/api/member-roles")
+async def api_member_roles(request: Request):
+    require_auth(request)
+    return await bot_get("/api/member-roles")
+
 @app.get("/api/activity-chart")
 async def api_activity_chart(request: Request):
     require_auth(request)
