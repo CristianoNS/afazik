@@ -10,7 +10,7 @@ import httpx
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Request, Response, HTTPException
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 import asyncpg
 
