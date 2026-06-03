@@ -33,6 +33,8 @@ DASHBOARD_PORT    = int(os.getenv("PORT", "8080"))
 ANNOUNCE_CHANNEL_ID  = int(os.getenv("ANNOUNCE_CHANNEL_ID", "0"))   # kanał tekstowy na ogłoszenia
 ANNOUNCE_IMAGE_URL   = os.getenv("ANNOUNCE_IMAGE_URL", "")           # URL obrazka w ogłoszeniu
 
+AFK_CHANNEL_ID       = 1487890304362217562  # kanał AFK – nie liczony do statystyk
+
 # ── Ustawienia stałe ─────────────────────────────────────────────────────────
 THRESHOLD_OPIERZONY = 48   # godziny
 THRESHOLD_BROJLER   = 96   # godziny
@@ -76,13 +78,32 @@ async def on_ready():
 
     print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
 
+def _is_deaf(vs) -> bool:
+    """Sprawdza czy użytkownik jest ogłuszony (własnie lub przez serwer)."""
+    return vs.deaf or vs.self_deaf
+
 @bot.event
 async def on_voice_state_update(member, before, after):
     now = datetime.utcnow()
-    if after.channel and (not before.channel or before.channel.id != after.channel.id):
-        tracker.join(member.id, member.display_name, after.channel.id, after.channel.name, now)
-    if before.channel and (not after.channel or before.channel.id != after.channel.id):
-        await tracker.leave(member.id, before.channel.id, now)
+    channel_changed = before.channel != after.channel
+    deaf_changed    = (before.deaf != after.deaf) or (before.self_deaf != after.self_deaf)
+
+    if channel_changed:
+        # Dołączył do nowego kanału – śledź tylko jeśli nie ogłuszony i nie AFK
+        if after.channel and after.channel.id != AFK_CHANNEL_ID:
+            if not _is_deaf(after):
+                tracker.join(member.id, member.display_name, after.channel.id, after.channel.name, now)
+        # Opuścił poprzedni kanał (nie AFK) – zakończ sesję
+        if before.channel and before.channel.id != AFK_CHANNEL_ID:
+            await tracker.leave(member.id, before.channel.id, now)
+
+    elif deaf_changed and after.channel and after.channel.id != AFK_CHANNEL_ID:
+        if _is_deaf(after):
+            # Ogłuszył się na kanale – zakończ sesję
+            await tracker.leave(member.id, after.channel.id, now)
+        else:
+            # Odgłuszył się na kanale – rozpocznij sesję
+            tracker.join(member.id, member.display_name, after.channel.id, after.channel.name, now)
 
 # ── Zadania cykliczne ─────────────────────────────────────────────────────────
 
