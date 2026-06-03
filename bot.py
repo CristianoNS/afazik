@@ -378,73 +378,7 @@ async def stats_user(ctx, *, member: discord.Member = None):
     embed  = fmt.build_user_embed(rows, target.display_name)
     await ctx.send(embed=embed)
 
-@bot.command(name="wiadomosc-test", aliases=["wiadomość-test"])
-@commands.has_permissions(administrator=True)
-async def wiadomosc_test(ctx):
-    """Testowe wysłanie wszystkich wiadomości afazja na bieżącym kanale (tylko admin)."""
-    await ctx.message.delete()
-    ch = ctx.channel
-    mentions = _mentions()
-    opis_main = (
-        "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**. "
-        "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!\n\n"
-        "🕗 **Widzimy się tutaj:** <#1485261013434765376>\n\n"
-        "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
-    )
 
-    await ctx.send(content="——— 📌 **WERSJA PIĄTKOWA** ———")
-    embed1a = discord.Embed(title="Nieloty, pora na piątkową afazję!", description=opis_main)
-    if ANNOUNCE_IMAGE_URL:
-        embed1a.set_image(url=ANNOUNCE_IMAGE_URL)
-    msg = await ch.send(content=mentions, embed=embed1a)
-    await msg.add_reaction("🥚")
-
-    await ctx.send(content="——— 📌 **WERSJA SOBOTNIA** ———")
-    embed1b = discord.Embed(title="Nieloty, pora na sobotnią afazję!", description=opis_main)
-    if ANNOUNCE_IMAGE_URL:
-        embed1b.set_image(url=ANNOUNCE_IMAGE_URL)
-    msg2 = await ch.send(content=mentions, embed=embed1b)
-    await msg2.add_reaction("🥚")
-
-    await ctx.send(content="——— 📌 **PIERWSZE PRZYPOMNIENIE (15:00)** ———")
-    opis2 = (
-        "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
-        "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
-        "Do zobaczenia na kanale!\n\n"
-        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
-    )
-    embed2 = discord.Embed(title="Jeszcze tylko kilka godzin!", description=opis2)
-    if ANNOUNCE_IMAGE_URL:
-        embed2.set_image(url=ANNOUNCE_IMAGE_URL)
-    await ch.send(content=mentions, embed=embed2)
-
-    await ctx.send(content="——— 📌 **DRUGIE PRZYPOMNIENIE (19:00)** ———")
-    opis3 = (
-        "Dość gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
-        "Do zobaczenia na grzędzi!\n\n"
-        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
-    )
-    embed3 = discord.Embed(title="Zaczynamy za chwilę!", description=opis3)
-    if ANNOUNCE_IMAGE_URL:
-        embed3.set_image(url=ANNOUNCE_IMAGE_URL)
-    await ch.send(content=mentions, embed=embed3)
-
-@bot.command(name="czas-test")
-@commands.has_permissions(administrator=True)
-async def test_all(ctx):
-    await ctx.send("🧪 Uruchamiam test wszystkich procesów...")
-    await _send_monthly_report()
-    await _send_quarterly_report()
-    TEST_USER_ID = 1505984621408551053
-    for guild in bot.guilds:
-        member = guild.get_member(TEST_USER_ID)
-        if member:
-            rows         = await db.get_stats(period="alltime")
-            user_seconds = {r["user_id"]: int(r["total_seconds"] or 0) for r in rows}
-            total        = user_seconds.get(TEST_USER_ID, 0)
-            await _apply_roles(member, total, bot.get_channel(ROLE_ANNOUNCE_ID) if ROLE_ANNOUNCE_ID else None)
-            await ctx.send(f"✅ Role dla **{member.display_name}** zaktualizowane.")
-    await ctx.send("✅ Test zakończony.")
 
 @bot.command(name="pomoc", aliases=["help"])
 @has_stats_role()
