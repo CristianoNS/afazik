@@ -523,28 +523,12 @@ async def api_online(request):
         "is_special":   s.get("is_special", False),
     } for uid, s in tracker.active.items()])
 
-async def api_member_roles(request):
-    """Zwraca aktualne rangi każdego membera bezpośrednio z Discorda."""
-    if not _auth(request): return web.Response(status=401)
-    result = {}
-    for guild in bot.guilds:
-        for member in guild.members:
-            if member.bot:
-                continue
-            role_names = [r.name for r in member.roles if r.name != "@everyone"]
-            result[str(member.id)] = {
-                "display_name": member.display_name,
-                "roles": role_names,
-            }
-    return _json(result)
-
 async def api_health(request):
     return _json({"status": "ok", "bot": str(bot.user)})
 
 def build_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/api/health",          api_health)
-    app.router.add_get("/api/member-roles",    api_member_roles)
     app.router.add_get("/api/online",          api_online)
     app.router.add_get("/api/stats/{period}",  api_stats)
     app.router.add_get("/api/special",         api_special)
