@@ -523,6 +523,36 @@ async def api_online(request):
         "is_special":   s.get("is_special", False),
     } for uid, s in tracker.active.items()])
 
+async def api_member_roles(request):
+    """Aktualne rangi każdego membera z Discorda."""
+    if not _auth(request): return web.Response(status=401)
+    result = {}
+    for guild in bot.guilds:
+        for member in guild.members:
+            if member.bot:
+                continue
+            result[str(member.id)] = {
+                "display_name": member.display_name,
+                "roles": [r.name for r in member.roles if r.name != "@everyone"],
+            }
+    return _json(result)
+
+async def api_monthly_activity(request):
+    if not _auth(request): return web.Response(status=401)
+    return _json(await db.get_monthly_activity())
+
+async def api_weekly_activity(request):
+    if not _auth(request): return web.Response(status=401)
+    return _json(await db.get_weekly_activity())
+
+async def api_records(request):
+    if not _auth(request): return web.Response(status=401)
+    return _json(await db.get_records())
+
+async def api_server_stats(request):
+    if not _auth(request): return web.Response(status=401)
+    return _json(await db.get_server_stats())
+
 async def api_health(request):
     return _json({"status": "ok", "bot": str(bot.user)})
 
@@ -536,6 +566,11 @@ def build_app() -> web.Application:
     app.router.add_get("/api/inactive",        api_inactive)
     app.router.add_get("/api/role-grants",     api_role_grants)
     app.router.add_get("/api/activity-chart",  api_activity_chart)
+    app.router.add_get("/api/member-roles",    api_member_roles)
+    app.router.add_get("/api/monthly-activity",api_monthly_activity)
+    app.router.add_get("/api/weekly-activity", api_weekly_activity)
+    app.router.add_get("/api/records",         api_records)
+    app.router.add_get("/api/server-stats",    api_server_stats)
     return app
 
 async def main():
