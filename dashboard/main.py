@@ -158,10 +158,25 @@ async def api_online(request: Request):
     require_auth(request)
     return await bot_get("/api/online")
 
-@app.get("/api/member-roles")
-async def api_member_roles(request: Request):
+@app.get("/api/monthly-activity")
+async def api_monthly_activity(request: Request):
     require_auth(request)
-    return await bot_get("/api/member-roles")
+    return await bot_get("/api/monthly-activity")
+
+@app.get("/api/weekly-activity")
+async def api_weekly_activity(request: Request):
+    require_auth(request)
+    return await bot_get("/api/weekly-activity")
+
+@app.get("/api/records")
+async def api_records(request: Request):
+    require_auth(request)
+    return await bot_get("/api/records")
+
+@app.get("/api/server-stats")
+async def api_server_stats(request: Request):
+    require_auth(request)
+    return await bot_get("/api/server-stats")
 
 @app.get("/api/activity-chart")
 async def api_activity_chart(request: Request):
