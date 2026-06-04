@@ -453,6 +453,16 @@ async function loadRankings(period) {
   }
 }
 
+function getRoleStatus(displayName, secs) {
+  const rank = memberRoles[(displayName || '').toLowerCase()];
+  if (rank === 'BROJLER')   return 'brojler';
+  if (rank === 'OPIERZONY') return 'opierzony';
+  // Fallback: przelicz z czasu
+  if (secs >= THRESHOLDS.BROJLER)   return 'brojler';
+  if (secs >= THRESHOLDS.OPIERZONY) return 'opierzony';
+  return 'pisklak';
+}
+
 function renderRankings(data) {
   const tbody = document.getElementById('ranking-body');
   if (!data.length) {
@@ -461,10 +471,10 @@ function renderRankings(data) {
   }
   tbody.innerHTML = data.map((r,i) => {
     const secs = parseInt(r.total_seconds)||0;
-    const rank = i<3 ? `<span class="medal">${MEDALS[i]}</span>` : `<span class="num-rank">${i+1}.</span>`;
-    const prog = renderProgress(secs);
+    const medal = i<3 ? `<span class="medal">${MEDALS[i]}</span>` : `<span class="num-rank">${i+1}.</span>`;
+    const prog = renderProgress(secs, r.display_name);
     return `<tr>
-      <td>${rank}</td>
+      <td>${medal}</td>
       <td>${r.display_name||'–'}</td>
       <td><span class="time-badge">${fmtTime(secs)}</span></td>
       <td>${prog}</td>
@@ -472,18 +482,19 @@ function renderRankings(data) {
   }).join('');
 }
 
-function renderProgress(secs) {
-  if (secs >= THRESHOLDS.BROJLER) {
+function renderProgress(secs, displayName) {
+  const status = getRoleStatus(displayName, secs);
+  if (status === 'brojler') {
     return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-done" style="width:100%"></div></div><div class="prog-label">BROJLER ✓</div></div>`;
   }
-  if (secs >= THRESHOLDS.OPIERZONY) {
+  if (status === 'opierzony') {
     const pct = Math.min(100, Math.round((secs/THRESHOLDS.BROJLER)*100));
-    const rem = fmtTime(THRESHOLDS.BROJLER - secs);
-    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-br" style="width:${pct}%"></div></div><div class="prog-label">brak ${rem} do BROJLER</div></div>`;
+    const rem = fmtTime(Math.max(0, THRESHOLDS.BROJLER - secs));
+    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-br" style="width:${pct}%"></div></div><div class="prog-label">OPIERZONY ✓${secs < THRESHOLDS.BROJLER ? ' · '+rem+' do BROJLER' : ''}</div></div>`;
   }
   const pct = Math.min(100, Math.round((secs/THRESHOLDS.OPIERZONY)*100));
-  const rem = fmtTime(THRESHOLDS.OPIERZONY - secs);
-  return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-op" style="width:${pct}%"></div></div><div class="prog-label">brak ${rem} do OPIERZONY</div></div>`;
+  const rem = fmtTime(Math.max(0, THRESHOLDS.OPIERZONY - secs));
+  return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-op" style="width:${pct}%"></div></div><div class="prog-label">${rem} do OPIERZONY</div></div>`;
 }
 
 function renderStatCards(data) {
@@ -670,10 +681,9 @@ function applyRankFilter() {
   document.querySelectorAll('#ranking-body tr').forEach(row => {
     if (activeRankFilter === 'all') { row.style.display = ''; return; }
     const name = row.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
-    const roles = memberRoles[name.toLowerCase()] || [];
     const secs = parseInt(currentRankData.find(r => r.display_name === name)?.total_seconds || 0);
     const status = getRoleStatus(name, secs).toUpperCase();
-    row.style.display = (roles.includes(activeRankFilter) || status === activeRankFilter) ? '' : 'none';
+    row.style.display = status === activeRankFilter ? '' : 'none';
   });
 }
 
@@ -767,7 +777,9 @@ async function loadMemberRoles() {
     const data = await apiFetch('/api/member-roles');
     memberRoles = {};
     for (const info of Object.values(data)) {
-      if (info.display_name) memberRoles[info.display_name.toLowerCase()] = info.roles.map(r=>r.toUpperCase());
+      if (info.display_name) {
+        memberRoles[info.display_name.toLowerCase()] = info.rank || 'PISKLAK';
+      }
     }
   } catch(e) { memberRoles = {}; }
 }
