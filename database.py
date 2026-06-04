@@ -85,7 +85,7 @@ class Database:
         cutoff = cutoff_map.get(period, "TO_TIMESTAMP(0)")
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(f"""
-                SELECT user_id,
+                SELECT CAST(user_id AS TEXT) AS user_id,
                     (SELECT display_name FROM voice_sessions v2
                      WHERE v2.user_id=vs.user_id ORDER BY joined_at DESC LIMIT 1) AS display_name,
                     SUM(COALESCE(duration_s,0)) AS total_seconds
@@ -99,7 +99,7 @@ class Database:
     async def get_special_stats(self) -> list[dict]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT user_id,
+                SELECT CAST(user_id AS TEXT) AS user_id,
                     (SELECT display_name FROM voice_sessions v2
                      WHERE v2.user_id=vs.user_id ORDER BY joined_at DESC LIMIT 1) AS display_name,
                     SUM(COALESCE(duration_s,0)) AS total_seconds
