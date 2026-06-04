@@ -230,7 +230,7 @@ tr:hover td { background: rgba(88,101,242,.04); }
               </div>
             </div>
             <table>
-              <thead><tr><th>#</th><th>Użytkownik</th><th>Czas łącznie</th><th>Do następnej rangi</th></tr></thead>
+              <thead><tr><th>#</th><th>Użytkownik</th><th>Czas łącznie</th><th id="rank-col-header" style="display:none">Do następnej rangi</th></tr></thead>
               <tbody id="ranking-body"><tr><td colspan="4" class="loading">Ładowanie...</td></tr></tbody>
             </table>
           </div>
@@ -429,6 +429,8 @@ document.querySelectorAll('#period-tabs .tab').forEach(tab => {
     tab.classList.add('active');
     currentPeriod = tab.dataset.period;
     document.getElementById('search-box').value = '';
+    const rch = document.getElementById('rank-col-header');
+    if (rch) rch.style.display = currentPeriod === 'alltime' ? '' : 'none';
     loadRankings(currentPeriod);
   });
 });
@@ -472,12 +474,12 @@ function renderRankings(data) {
   tbody.innerHTML = data.map((r,i) => {
     const secs = parseInt(r.total_seconds)||0;
     const medal = i<3 ? `<span class="medal">${MEDALS[i]}</span>` : `<span class="num-rank">${i+1}.</span>`;
-    const prog = renderProgress(secs, r.display_name);
+    const prog = currentPeriod === 'alltime' ? renderProgress(secs, r.display_name) : '';
     return `<tr>
       <td>${medal}</td>
       <td>${r.display_name||'–'}</td>
       <td><span class="time-badge">${fmtTime(secs)}</span></td>
-      <td>${prog}</td>
+      ${currentPeriod === 'alltime' ? `<td>${prog}</td>` : ''}
     </tr>`;
   }).join('');
 }
