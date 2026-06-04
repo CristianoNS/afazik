@@ -422,26 +422,45 @@ async def api_online(request):
     } for uid, s in tracker.active.items()])
 
 async def api_member_roles(request):
-    """Zwraca rangę każdego membera na podstawie ID rang z Railway."""
+    """Zwraca rangę każdego membera — świeże dane z Discord API (nie cache)."""
     if not _auth(request): return web.Response(status=401)
     result = {}
     for guild in bot.guilds:
         role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
         role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
-        for member in guild.members:
-            if member.bot:
-                continue
-            member_role_ids = {r.id for r in member.roles}
-            if role_brojler and role_brojler.id in member_role_ids:
-                rank = "BROJLER"
-            elif role_opierzony and role_opierzony.id in member_role_ids:
-                rank = "OPIERZONY"
-            else:
-                rank = "PISKLAK"
-            result[str(member.id)] = {
-                "display_name": member.display_name,
-                "rank": rank,
-            }
+        try:
+            # fetch_members pobiera świeże dane z API, omijając stary cache
+            async for member in guild.fetch_members(limit=None):
+                if member.bot:
+                    continue
+                member_role_ids = {r.id for r in member.roles}
+                if role_brojler and role_brojler.id in member_role_ids:
+                    rank = "BROJLER"
+                elif role_opierzony and role_opierzony.id in member_role_ids:
+                    rank = "OPIERZONY"
+                else:
+                    rank = "PISKLAK"
+                result[str(member.id)] = {
+                    "display_name": member.display_name,
+                    "rank": rank,
+                }
+        except Exception as e:
+            print(f"fetch_members error: {e}")
+            # Fallback do cache jeśli API nie odpowiada
+            for member in guild.members:
+                if member.bot:
+                    continue
+                member_role_ids = {r.id for r in member.roles}
+                if role_brojler and role_brojler.id in member_role_ids:
+                    rank = "BROJLER"
+                elif role_opierzony and role_opierzony.id in member_role_ids:
+                    rank = "OPIERZONY"
+                else:
+                    rank = "PISKLAK"
+                result[str(member.id)] = {
+                    "display_name": member.display_name,
+                    "rank": rank,
+                }
     return _json(result)
 
 async def api_monthly_activity(request):
