@@ -422,15 +422,25 @@ async def api_online(request):
     } for uid, s in tracker.active.items()])
 
 async def api_member_roles(request):
+    """Zwraca rangę każdego membera na podstawie ID rang z Railway."""
     if not _auth(request): return web.Response(status=401)
     result = {}
     for guild in bot.guilds:
+        role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
+        role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
         for member in guild.members:
             if member.bot:
                 continue
+            member_role_ids = {r.id for r in member.roles}
+            if role_brojler and role_brojler.id in member_role_ids:
+                rank = "BROJLER"
+            elif role_opierzony and role_opierzony.id in member_role_ids:
+                rank = "OPIERZONY"
+            else:
+                rank = "PISKLAK"
             result[str(member.id)] = {
                 "display_name": member.display_name,
-                "roles": [r.name for r in member.roles if r.name != "@everyone"],
+                "rank": rank,
             }
     return _json(result)
 
