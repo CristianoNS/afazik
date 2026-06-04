@@ -92,7 +92,7 @@ class Database:
                 FROM voice_sessions vs
                 WHERE joined_at >= {cutoff}
                   AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
-                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 25
+                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 100
             """)
             return [dict(r) for r in rows]
 
@@ -105,7 +105,7 @@ class Database:
                     SUM(COALESCE(duration_s,0)) AS total_seconds
                 FROM voice_sessions vs
                 WHERE is_special=TRUE AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
-                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 25
+                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 100
             """)
             return [dict(r) for r in rows]
 
