@@ -455,8 +455,9 @@ async function loadRankings(period) {
   }
 }
 
-function getRoleStatus(displayName, secs) {
-  const rank = memberRoles[(displayName || '').toLowerCase()];
+function getRoleStatus(displayName, secs, userId) {
+  const rank = (userId ? memberRoles['id:' + userId] : null)
+             || memberRoles[(displayName || '').toLowerCase()];
   if (rank === 'BROJLER')   return 'brojler';
   if (rank === 'OPIERZONY') return 'opierzony';
   // Fallback: przelicz z czasu
@@ -474,7 +475,7 @@ function renderRankings(data) {
   tbody.innerHTML = data.map((r,i) => {
     const secs = parseInt(r.total_seconds)||0;
     const medal = i<3 ? `<span class="medal">${MEDALS[i]}</span>` : `<span class="num-rank">${i+1}.</span>`;
-    const prog = currentPeriod === 'alltime' ? renderProgress(secs, r.display_name) : '';
+    const prog = currentPeriod === 'alltime' ? renderProgress(secs, r.display_name, r.user_id) : '';
     return `<tr>
       <td>${medal}</td>
       <td>${r.display_name||'–'}</td>
@@ -484,8 +485,8 @@ function renderRankings(data) {
   }).join('');
 }
 
-function renderProgress(secs, displayName) {
-  const status = getRoleStatus(displayName, secs);
+function renderProgress(secs, displayName, userId) {
+  const status = getRoleStatus(displayName, secs, userId);
   if (status === 'brojler') {
     return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-done" style="width:100%"></div></div><div class="prog-label">BROJLER ✓</div></div>`;
   }
@@ -684,7 +685,8 @@ function applyRankFilter() {
     if (activeRankFilter === 'all') { row.style.display = ''; return; }
     const name = row.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
     const secs = parseInt(currentRankData.find(r => r.display_name === name)?.total_seconds || 0);
-    const status = getRoleStatus(name, secs).toUpperCase();
+    const uid = currentRankData.find(r => r.display_name === name)?.user_id;
+    const status = getRoleStatus(name, secs, uid).toUpperCase();
     row.style.display = status === activeRankFilter ? '' : 'none';
   });
 }
@@ -778,10 +780,10 @@ async function loadMemberRoles() {
   try {
     const data = await apiFetch('/api/member-roles');
     memberRoles = {};
-    for (const info of Object.values(data)) {
-      if (info.display_name) {
-        memberRoles[info.display_name.toLowerCase()] = info.rank || 'PISKLAK';
-      }
+    for (const [userId, info] of Object.entries(data)) {
+      const rank = info.rank || 'PISKLAK';
+      if (info.display_name) memberRoles[info.display_name.toLowerCase()] = rank;
+      memberRoles['id:' + userId] = rank;  // indeks po user_id (string)
     }
   } catch(e) { memberRoles = {}; }
 }
