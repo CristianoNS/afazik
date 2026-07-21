@@ -295,7 +295,7 @@ async def _check_threshold_crossings(guild: discord.Guild):
             if not await db.has_threshold_alert(user_id, "BROJLER"):
                 if not has_brojler:
                     await ch.send(
-                        f"🏆 **{name}** przekroczył/a próg **96h** i spełnia wymóg uzyskania rangi **BROJLER**."
+                        f"**{name}** przekroczył/a próg **96h** i spełnia wymóg uzyskania rangi **BROJLER**."
                     )
                 # Zapisujemy jako obsłużone niezależnie od tego czy wysłano wiadomość –
                 # jeśli ranga już była, nie chcemy pytać o to ponownie w przyszłości.
@@ -305,7 +305,7 @@ async def _check_threshold_crossings(guild: discord.Guild):
             if not await db.has_threshold_alert(user_id, "OPIERZONY"):
                 if not has_opierzony and not has_brojler:
                     await ch.send(
-                        f"🎉 **{name}** przekroczył/a próg **48h** i spełnia wymóg uzyskania rangi **OPIERZONY**."
+                        f"**{name}** przekroczył/a próg **48h** i spełnia wymóg uzyskania rangi **OPIERZONY**."
                     )
                 await db.record_threshold_alert(user_id, "OPIERZONY")
 
@@ -353,7 +353,7 @@ async def _check_stale_ranks(guild: discord.Guild):
         if is_stale and not was_stale:
             days_text = "nigdy nieaktywny/a" if days_inactive is None else f"{days_inactive} dni"
             await ch.send(
-                f"😴 **{member.display_name}** jest nieaktywny/a od **{days_text}**. "
+                f"**{member.display_name}** jest nieaktywny/a od **{days_text}**. "
                 f"Aktualnie ma rangę **{rank}**."
             )
 
