@@ -3,7 +3,6 @@ database.py – obsługa PostgreSQL na Railway.
 """
 import os
 import asyncpg
-from datetime import datetime
 
 class Database:
     def __init__(self):
