@@ -39,6 +39,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states    = True
 intents.members         = True
+intents.invites         = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 bot.remove_command("help")
 
@@ -47,6 +48,8 @@ BOT_START_TIME = time.monotonic()  # do liczenia uptime
 db      = Database()
 tracker = VoiceTracker(db, SPECIAL_CHANNEL_ID)
 fmt     = StatsFormatter()
+
+invite_cache: dict[int, dict[str, int]] = {}  # guild_id -> {kod_zaproszenia: liczba_użyć}
 
 # ── Uprawnienia ───────────────────────────────────────────────────────────────
 
@@ -70,10 +73,89 @@ async def on_ready():
     quarterly_report_task.start()
     afazja_announcer.start()
     threshold_and_stale_checker.start()
+    for guild in bot.guilds:
+        await _refresh_invite_cache(guild)
     print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
 
 def _is_deaf(vs) -> bool:
     return vs.deaf or vs.self_deaf
+
+# ── Śledzenie zaproszeń: kto kogo zaprosił ──────────────────────────────────────
+
+async def _refresh_invite_cache(guild: discord.Guild):
+    """Zapisuje aktualną liczbę użyć każdego zaproszenia na serwerze."""
+    try:
+        invites = await guild.invites()
+        invite_cache[guild.id] = {inv.code: (inv.uses or 0) for inv in invites}
+    except discord.Forbidden:
+        invite_cache[guild.id] = {}
+        print(f"⚠️  Brak uprawnienia 'Zarządzaj serwerem' – śledzenie zaproszeń wyłączone dla {guild.name}.")
+
+@bot.event
+async def on_invite_create(invite: discord.Invite):
+    invite_cache.setdefault(invite.guild.id, {})[invite.code] = invite.uses or 0
+
+@bot.event
+async def on_invite_delete(invite: discord.Invite):
+    invite_cache.get(invite.guild.id, {}).pop(invite.code, None)
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    """Informuje na kanale kto dołączył i z jakiego zaproszenia skorzystał."""
+    if member.bot:
+        return
+    guild = member.guild
+    ch = bot.get_channel(NOTIFICATIONS_CHANNEL_ID)
+    if not ch:
+        return
+
+    old_cache = invite_cache.get(guild.id, {})
+    used_invite = None
+    disappeared_code = None
+
+    try:
+        new_invites = await guild.invites()
+        new_codes = set()
+        for inv in new_invites:
+            new_codes.add(inv.code)
+            if (inv.uses or 0) > old_cache.get(inv.code, 0):
+                used_invite = inv
+                break
+
+        if used_invite is None:
+            # Zaproszenie mogło zniknąć, jeśli było jednorazowe i właśnie się wyczerpało
+            for code in old_cache:
+                if code not in new_codes:
+                    disappeared_code = code
+                    break
+
+        invite_cache[guild.id] = {inv.code: (inv.uses or 0) for inv in new_invites}
+    except discord.Forbidden:
+        pass
+    except Exception as e:
+        print(f"on_member_join – błąd sprawdzania zaproszeń: {e}")
+
+    if used_invite is not None:
+        inviter = used_invite.inviter.mention if used_invite.inviter else "nieznanego użytkownika"
+        await ch.send(
+            f"👋 **{member.display_name}** dołączył/a do serwera – zaproszony/a przez {inviter} "
+            f"(kod: `{used_invite.code}`)."
+        )
+    elif disappeared_code is not None:
+        await ch.send(
+            f"👋 **{member.display_name}** dołączył/a do serwera – prawdopodobnie użył/a "
+            f"jednorazowego zaproszenia `{disappeared_code}`, które właśnie wygasło."
+        )
+    else:
+        # Sprawdź link vanity URL serwera (jeśli serwer go ma)
+        try:
+            vanity = await guild.vanity_invite()
+        except (discord.Forbidden, discord.NotFound):
+            vanity = None
+        if vanity is not None:
+            await ch.send(f"👋 **{member.display_name}** dołączył/a do serwera przez własny link serwera (vanity URL).")
+        else:
+            await ch.send(f"👋 **{member.display_name}** dołączył/a do serwera (nie udało się ustalić zaproszenia).")
 
 @bot.event
 async def on_voice_state_update(member, before, after):
