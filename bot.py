@@ -424,6 +424,49 @@ async def api_records(request):
     if not _auth(request): return web.Response(status=401)
     return _json(await db.get_records())
 
+async def api_stale_ranked(request):
+    """Osoby z rangą OPIERZONY/BROJLER nieaktywne od ponad STALE_DAYS dni."""
+    if not _auth(request): return web.Response(status=401)
+    STALE_DAYS = 30
+
+    last_activity = await db.get_last_activity_per_user()
+    now = datetime.now(timezone.utc)
+    result = []
+
+    for guild in bot.guilds:
+        role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
+        role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
+        try:
+            async for member in guild.fetch_members(limit=None):
+                if member.bot:
+                    continue
+                member_role_ids = {r.id for r in member.roles}
+                if role_brojler and role_brojler.id in member_role_ids:
+                    rank = "BROJLER"
+                elif role_opierzony and role_opierzony.id in member_role_ids:
+                    rank = "OPIERZONY"
+                else:
+                    continue  # PISKLAK nie interesuje nas tutaj
+
+                last_seen = last_activity.get(str(member.id))
+                if last_seen is None:
+                    days_inactive = None  # nigdy nie widziany na kanale
+                else:
+                    days_inactive = (now - last_seen).days
+
+                if days_inactive is None or days_inactive >= STALE_DAYS:
+                    result.append({
+                        "display_name":  member.display_name,
+                        "rank":          rank,
+                        "last_seen":     last_seen.isoformat() if last_seen else None,
+                        "days_inactive": days_inactive,
+                    })
+        except Exception as e:
+            print(f"api_stale_ranked error: {e}")
+
+    result.sort(key=lambda r: (r["days_inactive"] is None, r["days_inactive"] or 0), reverse=True)
+    return _json(result)
+
 async def api_server_stats(request):
     if not _auth(request): return web.Response(status=401)
     return _json(await db.get_server_stats())
@@ -482,6 +525,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/weekly-activity",  api_weekly_activity)
     app.router.add_get("/api/records",          api_records)
     app.router.add_get("/api/server-stats",     api_server_stats)
+    app.router.add_get("/api/stale-ranked",     api_stale_ranked)
     return app
 
 async def main():
