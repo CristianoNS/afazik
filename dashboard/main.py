@@ -183,6 +183,11 @@ async def api_server_stats(request: Request):
     require_auth(request)
     return await bot_get("/api/server-stats")
 
+@app.get("/api/stale-ranked")
+async def api_stale_ranked(request: Request):
+    require_auth(request)
+    return await bot_get("/api/stale-ranked")
+
 @app.get("/api/member-roles")
 async def api_member_roles(request: Request):
     require_auth(request)
