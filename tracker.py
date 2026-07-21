@@ -87,17 +87,34 @@ class VoiceTracker:
         if not sess:
             return
 
-        # Poczekaj chwilę jeśli sesja jeszcze otwierana
+        duration_s = max(0, int((now - sess["joined"]).total_seconds()))
+
+        # Jeśli sesja jeszcze się otwiera w bazie – poczekaj aż session_id
+        # faktycznie się pojawi (zamiast zgadywać po jednym stałym sleepie).
         if sess.get("_pending_open"):
             import asyncio
-            await asyncio.sleep(0.5)
-            sess = self.active.pop(user_id, sess)  # może już wróciła
+            for _ in range(20):  # maks. ~5s (20 × 0.25s)
+                # Sprawdź czy w międzyczasie ten sam user wrócił na kanał
+                # (np. szybkie przełączenie) – wtedy nie zamykamy jego nowej sesji
+                if user_id in self.active and self.active[user_id]["joined"] != sess["joined"]:
+                    return
+                if sess.get("session_id"):
+                    break
+                await asyncio.sleep(0.25)
 
-        duration_s = max(0, int((now - sess["joined"]).total_seconds()))
         if sess.get("session_id"):
             await self.db.close_session(
                 sess["session_id"], now, duration_s, sess["display_name"]
             )
+        else:
+            # Sesja nigdy nie zdążyła się otworzyć w bazie (bardzo wolna odpowiedź DB)
+            # – zapisz ją teraz od razu jako zamkniętą, żeby nie stracić czasu.
+            print(f"⚠️  Sesja user_id={user_id} nie miała session_id – zapisuję awaryjnie.")
+            new_id = await self.db.open_session(
+                user_id, sess["display_name"], sess["channel_id"], sess["channel_name"],
+                sess["joined"], sess["is_special"],
+            )
+            await self.db.close_session(new_id, now, duration_s, sess["display_name"])
 
     async def flush_active(self, now: datetime):
         """
