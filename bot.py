@@ -27,6 +27,7 @@ ROLE_BROJLER_ID    = int(os.getenv("ROLE_BROJLER_ID", "0"))
 DASHBOARD_SECRET   = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
 DASHBOARD_PORT     = int(os.getenv("PORT", "8080"))
 AFK_CHANNEL_ID     = 1487890304362217562
+NOTIFICATIONS_CHANNEL_ID = 1529222104384274502  # kanał: przekroczenie progów + nieaktywność z rangą
 
 # ── Ogłoszenia Afazja ──────────────────────────────────────────────────────────
 ANNOUNCE_CHANNEL_ID = int(os.getenv("ANNOUNCE_CHANNEL_ID", "0"))
@@ -66,6 +67,7 @@ async def on_ready():
     monthly_report_task.start()
     quarterly_report_task.start()
     afazja_announcer.start()
+    threshold_and_stale_checker.start()
     print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
 
 def _is_deaf(vs) -> bool:
@@ -242,6 +244,120 @@ async def _get_inactive_members() -> list[discord.Member]:
             if member.id not in active_ids:
                 result.append(member)
     return sorted(result, key=lambda m: m.joined_at or datetime.min.replace(tzinfo=timezone.utc))
+
+# ── Powiadomienia: progi godzinowe i nieaktywność z rangą ───────────────────────
+
+STALE_DAYS = 30  # ile dni braku aktywności traktujemy jako "nieaktywny z rangą"
+
+@tasks.loop(hours=1)
+async def threshold_and_stale_checker():
+    for guild in bot.guilds:
+        await _check_threshold_crossings(guild)
+        await _check_stale_ranks(guild)
+
+async def _check_threshold_crossings(guild: discord.Guild):
+    """Informuje o przekroczeniu progu 48h (OPIERZONY) i 96h (BROJLER).
+
+    Zanim wyśle powiadomienie, sprawdza AKTUALNĄ rangę danej osoby na Discordzie.
+    Jeśli osoba już ma daną rangę (np. nadaną wcześniej ręcznie, albo przez
+    stary system automatyczny) – zapisuje próg jako "już obsłużony" bez
+    wysyłania wiadomości, żeby uniknąć bezsensownych powiadomień typu
+    "spełniasz wymóg" dla kogoś kto już tę rangę posiada.
+    """
+    ch = bot.get_channel(NOTIFICATIONS_CHANNEL_ID)
+    if not ch:
+        return
+
+    role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
+    role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
+
+    try:
+        members_by_id = {m.id: m async for m in guild.fetch_members(limit=None)}
+    except Exception as e:
+        print(f"_check_threshold_crossings fetch_members error: {e}")
+        members_by_id = {m.id: m for m in guild.members}
+
+    rows = await db.get_stats(period="alltime")
+    for row in rows:
+        user_id = int(row["user_id"])
+        secs    = int(row["total_seconds"] or 0)
+        name    = row["display_name"] or str(user_id)
+
+        member = members_by_id.get(user_id)
+        if member is None or member.bot:
+            continue  # osoba już nie na serwerze albo to bot
+
+        member_role_ids = {r.id for r in member.roles}
+        has_brojler   = bool(role_brojler   and role_brojler.id   in member_role_ids)
+        has_opierzony = bool(role_opierzony and role_opierzony.id in member_role_ids)
+
+        if secs >= 96 * 3600:
+            if not await db.has_threshold_alert(user_id, "BROJLER"):
+                if not has_brojler:
+                    await ch.send(
+                        f"🏆 **{name}** przekroczył/a próg **96h** i spełnia wymóg uzyskania rangi **BROJLER**."
+                    )
+                # Zapisujemy jako obsłużone niezależnie od tego czy wysłano wiadomość –
+                # jeśli ranga już była, nie chcemy pytać o to ponownie w przyszłości.
+                await db.record_threshold_alert(user_id, "BROJLER")
+
+        if secs >= 48 * 3600:
+            if not await db.has_threshold_alert(user_id, "OPIERZONY"):
+                if not has_opierzony and not has_brojler:
+                    await ch.send(
+                        f"🎉 **{name}** przekroczył/a próg **48h** i spełnia wymóg uzyskania rangi **OPIERZONY**."
+                    )
+                await db.record_threshold_alert(user_id, "OPIERZONY")
+
+async def _check_stale_ranks(guild: discord.Guild):
+    """Informuje gdy osoba z rangą OPIERZONY/BROJLER staje się nieaktywna od STALE_DAYS dni."""
+    ch = bot.get_channel(NOTIFICATIONS_CHANNEL_ID)
+    if not ch:
+        return
+
+    role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
+    role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
+    last_activity  = await db.get_last_activity_per_user()
+    now = datetime.now(timezone.utc)
+
+    try:
+        members = [m async for m in guild.fetch_members(limit=None)]
+    except Exception as e:
+        print(f"_check_stale_ranks fetch_members error: {e}")
+        members = guild.members
+
+    for member in members:
+        if member.bot:
+            continue
+        member_role_ids = {r.id for r in member.roles}
+        if role_brojler and role_brojler.id in member_role_ids:
+            rank = "BROJLER"
+        elif role_opierzony and role_opierzony.id in member_role_ids:
+            rank = "OPIERZONY"
+        else:
+            # Brak rangi – zresetuj stan, żeby ewentualny przyszły powrót rangi
+            # i ponowna nieaktywność znowu wygenerowały powiadomienie.
+            await db.set_stale_state(member.id, False)
+            continue
+
+        last_seen = last_activity.get(str(member.id))
+        if last_seen is None:
+            days_inactive = None  # nigdy aktywny mimo posiadania rangi
+            is_stale = True
+        else:
+            days_inactive = (now - last_seen).days
+            is_stale = days_inactive >= STALE_DAYS
+
+        was_stale = await db.get_stale_state(member.id)
+
+        if is_stale and not was_stale:
+            days_text = "nigdy nieaktywny/a" if days_inactive is None else f"{days_inactive} dni"
+            await ch.send(
+                f"😴 **{member.display_name}** jest nieaktywny/a od **{days_text}**. "
+                f"Aktualnie ma rangę **{rank}**."
+            )
+
+        await db.set_stale_state(member.id, is_stale)
 
 # ── Komendy ────────────────────────────────────────────────────────────────────
 
@@ -427,7 +543,6 @@ async def api_records(request):
 async def api_stale_ranked(request):
     """Osoby z rangą OPIERZONY/BROJLER nieaktywne od ponad STALE_DAYS dni."""
     if not _auth(request): return web.Response(status=401)
-    STALE_DAYS = 30
 
     last_activity = await db.get_last_activity_per_user()
     now = datetime.now(timezone.utc)
