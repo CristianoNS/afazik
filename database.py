@@ -40,6 +40,20 @@ class Database:
                     entry_count INTEGER
                 );
 
+                CREATE TABLE IF NOT EXISTS threshold_alerts (
+                    id           BIGSERIAL PRIMARY KEY,
+                    user_id      BIGINT      NOT NULL,
+                    threshold    TEXT        NOT NULL,
+                    notified_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE(user_id, threshold)
+                );
+
+                CREATE TABLE IF NOT EXISTS stale_rank_state (
+                    user_id      BIGINT      PRIMARY KEY,
+                    is_stale     BOOLEAN     NOT NULL DEFAULT FALSE,
+                    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+
                 CREATE TABLE IF NOT EXISTS role_grants (
                     id           BIGSERIAL PRIMARY KEY,
                     user_id      BIGINT      NOT NULL,
@@ -312,6 +326,40 @@ class Database:
                 GROUP BY user_id
             """)
             return {r["user_id"]: r["last_seen"] for r in rows}
+
+    # ── Powiadomienia: progi godzinowe (48h / 96h) ──────────────────────────────
+
+    async def has_threshold_alert(self, user_id: int, threshold: str) -> bool:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT 1 FROM threshold_alerts WHERE user_id=$1 AND threshold=$2",
+                user_id, threshold)
+            return row is not None
+
+    async def record_threshold_alert(self, user_id: int, threshold: str):
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO threshold_alerts (user_id, threshold)
+                VALUES ($1, $2)
+                ON CONFLICT (user_id, threshold) DO NOTHING
+            """, user_id, threshold)
+
+    # ── Powiadomienia: nieaktywność z rangą ──────────────────────────────────────
+
+    async def get_stale_state(self, user_id: int) -> bool:
+        """Zwraca ostatni znany stan 'is_stale' dla usera (False jeśli brak wpisu)."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT is_stale FROM stale_rank_state WHERE user_id=$1", user_id)
+            return bool(row["is_stale"]) if row else False
+
+    async def set_stale_state(self, user_id: int, is_stale: bool):
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO stale_rank_state (user_id, is_stale, updated_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (user_id) DO UPDATE SET is_stale=$2, updated_at=NOW()
+            """, user_id, is_stale)
 
     async def get_role_grants(self) -> list[dict]:
         async with self.pool.acquire() as conn:
