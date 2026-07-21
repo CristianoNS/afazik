@@ -28,6 +28,8 @@ DASHBOARD_SECRET   = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
 DASHBOARD_PORT     = int(os.getenv("PORT", "8080"))
 AFK_CHANNEL_ID     = 1487890304362217562
 NOTIFICATIONS_CHANNEL_ID = 1529222104384274502  # kanał: przekroczenie progów + nieaktywność z rangą
+QUIET_HOURS_START = int(os.getenv("QUIET_HOURS_START", "8"))   # od której godziny wysyłamy powiadomienia
+QUIET_HOURS_END   = int(os.getenv("QUIET_HOURS_END", "22"))   # do której godziny (wyłącznie) wysyłamy powiadomienia
 
 # ── Ogłoszenia Afazja ──────────────────────────────────────────────────────────
 ANNOUNCE_CHANNEL_ID = int(os.getenv("ANNOUNCE_CHANNEL_ID", "0"))
@@ -249,8 +251,16 @@ async def _get_inactive_members() -> list[discord.Member]:
 
 STALE_DAYS = 30  # ile dni braku aktywności traktujemy jako "nieaktywny z rangą"
 
+def _is_quiet_hours() -> bool:
+    """Sprawdza czy jesteśmy poza oknem aktywnym (domyślnie 8:00–22:00 czasu lokalnego)."""
+    hour = datetime.now(LOCAL_TZ).hour
+    return not (QUIET_HOURS_START <= hour < QUIET_HOURS_END)
+
 @tasks.loop(hours=1)
 async def threshold_and_stale_checker():
+    if _is_quiet_hours():
+        return  # poza oknem 8:00–22:00 – nic nie sprawdzamy ani nie wysyłamy;
+                # najbliższe uruchomienie w oknie aktywnym złapie te same zdarzenia
     for guild in bot.guilds:
         await _check_threshold_crossings(guild)
         await _check_stale_ranks(guild)
