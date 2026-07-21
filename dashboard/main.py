@@ -128,6 +128,11 @@ async def bot_post(endpoint: str, data: dict):
 
 # ── API endpointy dashboardu ──────────────────────────────────────────────────
 
+@app.get("/api/health")
+async def api_health(request: Request):
+    """Publiczny health-check – bez wymogu logowania, dla UptimeRobot i innych monitorów."""
+    return await bot_get("/api/health")
+
 @app.get("/api/stats/{period}")
 async def api_stats(period: str, request: Request):
     require_auth(request)
