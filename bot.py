@@ -6,6 +6,7 @@ import os
 import json
 import secrets
 import time
+import hmac
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -28,6 +29,7 @@ DASHBOARD_SECRET   = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
 DASHBOARD_PORT     = int(os.getenv("PORT", "8080"))
 AFK_CHANNEL_ID     = 1487890304362217562
 NOTIFICATIONS_CHANNEL_ID = 1529222104384274502  # kanał: przekroczenie progów + nieaktywność z rangą
+EVENT_VOICE_CHANNEL_ID = 1485261013434765376  # kanał głosowy Afazja (wzmianka w ogłoszeniach)
 QUIET_HOURS_START = int(os.getenv("QUIET_HOURS_START", "8"))   # od której godziny wysyłamy powiadomienia
 QUIET_HOURS_END   = int(os.getenv("QUIET_HOURS_END", "22"))   # do której godziny (wyłącznie) wysyłamy powiadomienia
 
@@ -226,7 +228,7 @@ async def _send_afazja_main(weekday: int = 5):
     opis = (
         "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**. "
         "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!\n\n"
-        "🕗 **Widzimy się tutaj:** <#1485261013434765376>\n\n"
+        "🕗 **Widzimy się tutaj:** <#" + str(EVENT_VOICE_CHANNEL_ID) + ">\n\n"
         "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
     )
     embed = discord.Embed(title=title, description=opis)
@@ -244,7 +246,7 @@ async def _send_afazja_reminder_1():
         "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
         "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
         "Do zobaczenia na kanale!\n\n"
-        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
+        "🕛 **Widzimy się tutaj:** <#" + str(EVENT_VOICE_CHANNEL_ID) + ">"
     )
     embed = discord.Embed(title="Jeszcze tylko kilka godzin!", description=opis)
     if ANNOUNCE_IMAGE_URL:
@@ -259,7 +261,7 @@ async def _send_afazja_reminder_2():
     opis = (
         "Dość gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
         "Do zobaczenia na grzędzi!\n\n"
-        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
+        "🕛 **Widzimy się tutaj:** <#" + str(EVENT_VOICE_CHANNEL_ID) + ">"
     )
     embed = discord.Embed(title="Zaczynamy za chwilę!", description=opis)
     if ANNOUNCE_IMAGE_URL:
@@ -344,10 +346,15 @@ async def threshold_and_stale_checker():
         return  # poza oknem 8:00–22:00 – nic nie sprawdzamy ani nie wysyłamy;
                 # najbliższe uruchomienie w oknie aktywnym złapie te same zdarzenia
     for guild in bot.guilds:
-        await _check_threshold_crossings(guild)
-        await _check_stale_ranks(guild)
+        try:
+            members_by_id = {m.id: m async for m in guild.fetch_members(limit=None)}
+        except Exception as e:
+            print(f"threshold_and_stale_checker fetch_members error: {e}")
+            members_by_id = {m.id: m for m in guild.members}
+        await _check_threshold_crossings(guild, members_by_id)
+        await _check_stale_ranks(guild, members_by_id)
 
-async def _check_threshold_crossings(guild: discord.Guild):
+async def _check_threshold_crossings(guild: discord.Guild, members_by_id: dict):
     """Informuje o przekroczeniu progu 48h (OPIERZONY) i 96h (BROJLER).
 
     Zanim wyśle powiadomienie, sprawdza AKTUALNĄ rangę danej osoby na Discordzie.
@@ -362,12 +369,6 @@ async def _check_threshold_crossings(guild: discord.Guild):
 
     role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
     role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
-
-    try:
-        members_by_id = {m.id: m async for m in guild.fetch_members(limit=None)}
-    except Exception as e:
-        print(f"_check_threshold_crossings fetch_members error: {e}")
-        members_by_id = {m.id: m for m in guild.members}
 
     rows = await db.get_stats(period="alltime")
     for row in rows:
@@ -401,7 +402,7 @@ async def _check_threshold_crossings(guild: discord.Guild):
                     )
                 await db.record_threshold_alert(user_id, "OPIERZONY")
 
-async def _check_stale_ranks(guild: discord.Guild):
+async def _check_stale_ranks(guild: discord.Guild, members_by_id: dict):
     """Informuje gdy osoba z rangą OPIERZONY/BROJLER staje się nieaktywna od STALE_DAYS dni."""
     ch = bot.get_channel(NOTIFICATIONS_CHANNEL_ID)
     if not ch:
@@ -412,13 +413,7 @@ async def _check_stale_ranks(guild: discord.Guild):
     last_activity  = await db.get_last_activity_per_user()
     now = datetime.now(timezone.utc)
 
-    try:
-        members = [m async for m in guild.fetch_members(limit=None)]
-    except Exception as e:
-        print(f"_check_stale_ranks fetch_members error: {e}")
-        members = guild.members
-
-    for member in members:
+    for member in members_by_id.values():
         if member.bot:
             continue
         member_role_ids = {r.id for r in member.roles}
@@ -532,7 +527,9 @@ async def on_command_error(ctx, error):
 # ── HTTP API dla dashboardu ────────────────────────────────────────────────────
 
 def _auth(request: web.Request) -> bool:
-    return request.headers.get("Authorization", "") == f"Bearer {DASHBOARD_SECRET}"
+    provided = request.headers.get("Authorization", "")
+    expected = f"Bearer {DASHBOARD_SECRET}"
+    return hmac.compare_digest(provided, expected)
 
 def _json(data) -> web.Response:
     return web.Response(
@@ -578,47 +575,57 @@ async def api_online(request):
         "is_special":   s.get("is_special", False),
     } for uid, s in tracker.active.items()])
 
-async def api_member_roles(request):
-    """Zwraca rangę każdego membera — świeże dane z Discord API (nie cache)."""
-    if not _auth(request): return web.Response(status=401)
+def _rank_for_member(member: discord.Member, role_brojler, role_opierzony) -> str:
+    """Pomocnicza funkcja – wyznacza rangę na podstawie posiadanych ról."""
+    member_role_ids = {r.id for r in member.roles}
+    if role_brojler and role_brojler.id in member_role_ids:
+        return "BROJLER"
+    if role_opierzony and role_opierzony.id in member_role_ids:
+        return "OPIERZONY"
+    return "PISKLAK"
+
+# Cache w pamięci (60s) – żeby dashboard i checkery powiadomień nie zasypywały
+# Discord API osobnymi zapytaniami fetch_members przy każdym odświeżeniu/godzinie.
+_member_roles_cache = {"data": None, "fetched_at": 0.0}
+MEMBER_ROLES_CACHE_TTL = 60  # sekundy
+
+async def _get_all_members_ranked(force_refresh: bool = False) -> dict:
+    """Zwraca {user_id_str: {"display_name":..., "rank":...}} dla wszystkich guildów, z cache."""
+    now_ts = time.monotonic()
+    if not force_refresh and _member_roles_cache["data"] is not None and \
+       (now_ts - _member_roles_cache["fetched_at"]) < MEMBER_ROLES_CACHE_TTL:
+        return _member_roles_cache["data"]
+
     result = {}
     for guild in bot.guilds:
         role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
         role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
         try:
-            # fetch_members pobiera świeże dane z API, omijając stary cache
             async for member in guild.fetch_members(limit=None):
                 if member.bot:
                     continue
-                member_role_ids = {r.id for r in member.roles}
-                if role_brojler and role_brojler.id in member_role_ids:
-                    rank = "BROJLER"
-                elif role_opierzony and role_opierzony.id in member_role_ids:
-                    rank = "OPIERZONY"
-                else:
-                    rank = "PISKLAK"
                 result[str(member.id)] = {
                     "display_name": member.display_name,
-                    "rank": rank,
+                    "rank": _rank_for_member(member, role_brojler, role_opierzony),
                 }
         except Exception as e:
             print(f"fetch_members error: {e}")
-            # Fallback do cache jeśli API nie odpowiada
             for member in guild.members:
                 if member.bot:
                     continue
-                member_role_ids = {r.id for r in member.roles}
-                if role_brojler and role_brojler.id in member_role_ids:
-                    rank = "BROJLER"
-                elif role_opierzony and role_opierzony.id in member_role_ids:
-                    rank = "OPIERZONY"
-                else:
-                    rank = "PISKLAK"
                 result[str(member.id)] = {
                     "display_name": member.display_name,
-                    "rank": rank,
+                    "rank": _rank_for_member(member, role_brojler, role_opierzony),
                 }
-    return _json(result)
+
+    _member_roles_cache["data"]       = result
+    _member_roles_cache["fetched_at"] = now_ts
+    return result
+
+async def api_member_roles(request):
+    """Zwraca rangę każdego membera – świeże dane z Discord API, cache 60s."""
+    if not _auth(request): return web.Response(status=401)
+    return _json(await _get_all_members_ranked())
 
 async def api_monthly_activity(request):
     if not _auth(request): return web.Response(status=401)
@@ -638,38 +645,27 @@ async def api_stale_ranked(request):
 
     last_activity = await db.get_last_activity_per_user()
     now = datetime.now(timezone.utc)
+    ranked = await _get_all_members_ranked()  # korzysta ze wspólnego cache 60s
     result = []
 
-    for guild in bot.guilds:
-        role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
-        role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
-        try:
-            async for member in guild.fetch_members(limit=None):
-                if member.bot:
-                    continue
-                member_role_ids = {r.id for r in member.roles}
-                if role_brojler and role_brojler.id in member_role_ids:
-                    rank = "BROJLER"
-                elif role_opierzony and role_opierzony.id in member_role_ids:
-                    rank = "OPIERZONY"
-                else:
-                    continue  # PISKLAK nie interesuje nas tutaj
+    for user_id_str, info in ranked.items():
+        rank = info["rank"]
+        if rank == "PISKLAK":
+            continue  # PISKLAK nie interesuje nas tutaj
 
-                last_seen = last_activity.get(str(member.id))
-                if last_seen is None:
-                    days_inactive = None  # nigdy nie widziany na kanale
-                else:
-                    days_inactive = (now - last_seen).days
+        last_seen = last_activity.get(user_id_str)
+        if last_seen is None:
+            days_inactive = None  # nigdy nie widziany na kanale
+        else:
+            days_inactive = (now - last_seen).days
 
-                if days_inactive is None or days_inactive >= STALE_DAYS:
-                    result.append({
-                        "display_name":  member.display_name,
-                        "rank":          rank,
-                        "last_seen":     last_seen.isoformat() if last_seen else None,
-                        "days_inactive": days_inactive,
-                    })
-        except Exception as e:
-            print(f"api_stale_ranked error: {e}")
+        if days_inactive is None or days_inactive >= STALE_DAYS:
+            result.append({
+                "display_name":  info["display_name"],
+                "rank":          rank,
+                "last_seen":     last_seen.isoformat() if last_seen else None,
+                "days_inactive": days_inactive,
+            })
 
     result.sort(key=lambda r: (r["days_inactive"] is None, r["days_inactive"] or 0), reverse=True)
     return _json(result)
