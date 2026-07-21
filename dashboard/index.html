@@ -230,7 +230,7 @@ tr:hover td { background: rgba(88,101,242,.04); }
               </div>
             </div>
             <table>
-              <thead><tr><th>#</th><th>Użytkownik</th><th>Czas łącznie</th><th id="rank-col-header" style="display:none">Do następnej rangi</th></tr></thead>
+              <thead><tr><th>#</th><th>Użytkownik</th><th>Czas łącznie</th><th>Do następnej rangi</th></tr></thead>
               <tbody id="ranking-body"><tr><td colspan="4" class="loading">Ładowanie...</td></tr></tbody>
             </table>
           </div>
@@ -305,6 +305,17 @@ tr:hover td { background: rgba(88,101,242,.04); }
     <div class="page" id="page-records">
       <div class="stat-grid" id="records-stat-grid" style="grid-template-columns:repeat(3,1fr)"></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px" id="records-grid"></div>
+
+      <div class="panel" style="margin-top:18px">
+        <div class="panel-hdr">
+          <span class="panel-title">⚠️ Ranga bez aktywności (30+ dni)</span>
+          <span style="font-size:11px;color:var(--muted)" id="stale-count"></span>
+        </div>
+        <table>
+          <thead><tr><th>Użytkownik</th><th>Ranga</th><th>Ostatnia aktywność</th><th>Dni nieaktywności</th></tr></thead>
+          <tbody id="stale-body"><tr><td colspan="4" class="loading">Ładowanie...</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- ── Nieaktywni ── -->
@@ -406,7 +417,7 @@ function loadPage(pg) {
   if (pg==='reports')  loadReports();
   if (pg==='roles')    loadRoles();
   if (pg==='inactive') loadInactive();
-  if (pg==='records')  loadRecords();
+  if (pg==='records')  { loadRecords(); loadStaleRanked(); }
 }
 
 function refreshCurrent() {
@@ -419,7 +430,7 @@ function refreshCurrent() {
   setRefreshTime();
 }
 
-loadMemberRolesThenRankings();
+loadPage('rankings');
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 
@@ -429,8 +440,6 @@ document.querySelectorAll('#period-tabs .tab').forEach(tab => {
     tab.classList.add('active');
     currentPeriod = tab.dataset.period;
     document.getElementById('search-box').value = '';
-    const rch = document.getElementById('rank-col-header');
-    if (rch) rch.style.display = currentPeriod === 'alltime' ? '' : 'none';
     loadRankings(currentPeriod);
   });
 });
@@ -455,9 +464,8 @@ async function loadRankings(period) {
   }
 }
 
-function getRoleStatus(displayName, secs, userId) {
-  const rank = (userId ? memberRoles['id:' + userId] : null)
-             || memberRoles[(displayName || '').toLowerCase()];
+function getRoleStatus(displayName, secs) {
+  const rank = memberRoles[(displayName || '').toLowerCase()];
   if (rank === 'BROJLER')   return 'brojler';
   if (rank === 'OPIERZONY') return 'opierzony';
   // Fallback: przelicz z czasu
@@ -475,18 +483,18 @@ function renderRankings(data) {
   tbody.innerHTML = data.map((r,i) => {
     const secs = parseInt(r.total_seconds)||0;
     const medal = i<3 ? `<span class="medal">${MEDALS[i]}</span>` : `<span class="num-rank">${i+1}.</span>`;
-    const prog = currentPeriod === 'alltime' ? renderProgress(secs, r.display_name, r.user_id) : '';
+    const prog = renderProgress(secs, r.display_name);
     return `<tr>
       <td>${medal}</td>
       <td>${r.display_name||'–'}</td>
       <td><span class="time-badge">${fmtTime(secs)}</span></td>
-      ${currentPeriod === 'alltime' ? `<td>${prog}</td>` : ''}
+      <td>${prog}</td>
     </tr>`;
   }).join('');
 }
 
-function renderProgress(secs, displayName, userId) {
-  const status = getRoleStatus(displayName, secs, userId);
+function renderProgress(secs, displayName) {
+  const status = getRoleStatus(displayName, secs);
   if (status === 'brojler') {
     return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-done" style="width:100%"></div></div><div class="prog-label">BROJLER ✓</div></div>`;
   }
@@ -685,8 +693,7 @@ function applyRankFilter() {
     if (activeRankFilter === 'all') { row.style.display = ''; return; }
     const name = row.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
     const secs = parseInt(currentRankData.find(r => r.display_name === name)?.total_seconds || 0);
-    const uid = currentRankData.find(r => r.display_name === name)?.user_id;
-    const status = getRoleStatus(name, secs, uid).toUpperCase();
+    const status = getRoleStatus(name, secs).toUpperCase();
     row.style.display = status === activeRankFilter ? '' : 'none';
   });
 }
@@ -745,6 +752,34 @@ async function loadRecords() {
   } catch(e) { console.error('records', e); }
 }
 
+// ── Nieaktywni z rangą ───────────────────────────────────────────────────────
+
+async function loadStaleRanked() {
+  const tbody = document.getElementById('stale-body');
+  try {
+    const data = await apiFetch('/api/stale-ranked');
+    document.getElementById('stale-count').textContent = data.length ? `${data.length} os.` : '';
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="loading">Wszyscy z rangą są aktywni! 🎉</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(r => {
+      const badgeClass = r.rank === 'BROJLER' ? 'role-BROJLER' : 'role-OPIERZONY';
+      const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleDateString('pl-PL') : 'nigdy';
+      const daysText = r.days_inactive === null ? 'nigdy nieaktywny/a' : `${r.days_inactive} dni`;
+      return `<tr>
+        <td>${r.display_name}</td>
+        <td><span class="${badgeClass}">${r.rank}</span></td>
+        <td style="color:var(--muted);font-size:12px">${lastSeen}</td>
+        <td style="color:var(--accent4);font-weight:600">${daysText}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="4" class="loading" style="color:var(--danger)">Błąd ładowania.</td></tr>';
+    console.error('stale-ranked', e);
+  }
+}
+
 // ── Wykresy porównawcze ────────────────────────────────────────────────────
 
 let chartMonthly, chartWeekly;
@@ -780,10 +815,10 @@ async function loadMemberRoles() {
   try {
     const data = await apiFetch('/api/member-roles');
     memberRoles = {};
-    for (const [userId, info] of Object.entries(data)) {
-      const rank = info.rank || 'PISKLAK';
-      if (info.display_name) memberRoles[info.display_name.toLowerCase()] = rank;
-      memberRoles['id:' + userId] = rank;  // indeks po user_id (string)
+    for (const info of Object.values(data)) {
+      if (info.display_name) {
+        memberRoles[info.display_name.toLowerCase()] = info.rank || 'PISKLAK';
+      }
     }
   } catch(e) { memberRoles = {}; }
 }
