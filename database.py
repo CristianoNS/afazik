@@ -301,6 +301,18 @@ class Database:
                 "most_active_dow":       dow_names[int(dow["dow"])] if dow else "–",
             }
 
+    async def get_last_activity_per_user(self) -> dict:
+        """Zwraca datę ostatniej aktywności głosowej dla każdego user_id (jako string)."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT CAST(user_id AS TEXT) AS user_id,
+                       MAX(COALESCE(left_at, joined_at)) AS last_seen
+                FROM voice_sessions
+                WHERE left_at IS NOT NULL OR duration_s IS NOT NULL
+                GROUP BY user_id
+            """)
+            return {r["user_id"]: r["last_seen"] for r in rows}
+
     async def get_role_grants(self) -> list[dict]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
