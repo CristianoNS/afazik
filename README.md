@@ -65,16 +65,16 @@ Każda wiadomość oznacza rangi BROJLER / OPIERZONY / PISKLAK i może zawierać
 
 ---
 
-## 🎖️ System rang aktywności
+## 🎖️ Rangi aktywności (nadawane ręcznie)
 
-Bot sprawdza progi aktywności **co godzinę**. Czas liczony łącznie ze zwykłych kanałów i kanału Afazja.
+Bot **liczy czas** i pokazuje w dashboardzie ile brakuje do progu każdej rangi — ale **nie nadaje ich automatycznie**. Rangi przypisuje administrator ręcznie na Discordzie, na podstawie danych z dashboardu.
 
-| Próg | Akcja |
+| Ranga | Sugerowany próg |
 |---|---|
-| 48h łącznie | Nadaj **OPIERZONY**, usuń **PISKLAK** |
-| 96h łącznie | Nadaj **BROJLER**, usuń **OPIERZONY** |
+| OPIERZONY | 48h łącznie |
+| BROJLER | 96h łącznie |
 
-Przy awansie bot wysyła ogłoszenie z gratulacjami na kanał `ROLE_ANNOUNCE_CHANNEL_ID`. Ranga PISKLAK musi być nadana ręcznie nowym członkom — bot ją tylko odbiera przy awansie, nigdy nie nadaje.
+Dashboard w zakładce **Rankingi → All time** pokazuje dokładny postęp każdej osoby (pasek + ile godzin brakuje). Aktualne rangi widoczne w dashboardzie są odczytywane bezpośrednio z Discorda — czyli to co ręcznie przypiszesz na serwerze, natychmiast odzwierciedla się w panelu.
 
 ---
 
@@ -84,14 +84,12 @@ Panel dostępny w przeglądarce, chroniony logowaniem przez Discord OAuth2. Komu
 
 | Zakładka | Zawartość |
 |---|---|
-| 📊 Rankingi | Tabele aktywności (7 dni / 30 dni / kwartał / all time / Afazja), filtr po randze, wyszukiwarka, eksport CSV |
+| 📊 Rankingi | Tabele aktywności (7 dni / 30 dni / kwartał / all time / Afazja), filtr po randze, wyszukiwarka, eksport CSV, pasek postępu do następnej rangi (tylko w All time) |
 | 📈 Wykresy | Dzienna aktywność (30 dni), aktywność miesięczna (12 miesięcy) i tygodniowa (8 tygodni) |
 | 📨 Raporty | Historia automatycznie wysłanych raportów |
-| 🎖️ Rangi | Historia nadanych rang z datami |
+| 🎖️ Rangi | Historia nadanych rang z datami (log ręcznych przypisań widoczny jeśli był kiedyś generowany automatycznie) |
 | 😴 Nieaktywni | Lista członków którzy nigdy nie byli na kanale głosowym |
 | 🏆 Rekordy | Lider wszechczasów, najdłuższa sesja, król Afazji, rekordy dobowe/tygodniowe |
-
-Rangi wyświetlane w dashboardzie pochodzą bezpośrednio z Discorda (nie tylko z przeliczonego czasu) — dzięki temu ręcznie nadane rangi też są poprawnie pokazywane. Dane o rangach są cache'owane po stronie bota na 60 sekund i odświeżane natychmiast po każdej automatycznej zmianie rangi.
 
 ---
 
@@ -107,11 +105,11 @@ Wszystkie endpointy wymagają nagłówka `Authorization: Bearer <DASHBOARD_SECRE
 | `GET /api/special` | Ranking kanału Afazja (all time) |
 | `GET /api/reports` | Historia raportów |
 | `GET /api/inactive` | Członkowie bez żadnej aktywności głosowej |
-| `GET /api/role-grants` | Historia nadanych rang |
+| `GET /api/role-grants` | Historia nadanych rang (log historyczny) |
 | `GET /api/activity-chart` | Dzienna aktywność – ostatnie 30 dni |
 | `GET /api/monthly-activity` | Aktywność miesięczna – ostatnie 12 miesięcy |
 | `GET /api/weekly-activity` | Aktywność tygodniowa – ostatnie 8 tygodni |
-| `GET /api/member-roles` | Aktualne rangi wszystkich członków (cache 60s) |
+| `GET /api/member-roles` | Aktualne rangi wszystkich członków, odczytane na żywo z Discorda |
 | `GET /api/records` | Rekordy serwera |
 | `GET /api/server-stats` | Zbiorcze statystyki serwera |
 
@@ -125,11 +123,10 @@ Wszystkie endpointy wymagają nagłówka `Authorization: Bearer <DASHBOARD_SECRE
 | `DATABASE_URL` | Baza PostgreSQL (Railway uzupełnia automatycznie) |
 | `SPECIAL_CHANNEL_ID` | ID kanału głosowego Afazja |
 | `REPORT_CHANNEL_ID` | ID kanału tekstowego na automatyczne raporty |
-| `ROLE_ANNOUNCE_CHANNEL_ID` | ID kanału tekstowego na ogłoszenia o nadaniu rang |
 | `STATS_ROLE_ID` | ID rangi uprawnionej do używania komend statystyk |
-| `ROLE_PISKLAK_ID` | ID rangi startowej (usuwana przy 48h) |
-| `ROLE_OPIERZONY_ID` | ID rangi nadawanej po 48h |
-| `ROLE_BROJLER_ID` | ID rangi nadawanej po 96h |
+| `ROLE_PISKLAK_ID` | ID rangi PISKLAK (do oznaczeń w ogłoszeniach i odczytu w dashboardzie) |
+| `ROLE_OPIERZONY_ID` | ID rangi OPIERZONY (do oznaczeń w ogłoszeniach i odczytu w dashboardzie) |
+| `ROLE_BROJLER_ID` | ID rangi BROJLER (do oznaczeń w ogłoszeniach i odczytu w dashboardzie) |
 | `ANNOUNCE_CHANNEL_ID` | ID kanału tekstowego na ogłoszenia Afazja |
 | `ANNOUNCE_IMAGE_URL` | Bezpośredni URL obrazka w ogłoszeniach |
 | `DASHBOARD_SECRET` | Klucz łączący bota z dashboardem |
@@ -138,6 +135,8 @@ Wszystkie endpointy wymagają nagłówka `Authorization: Bearer <DASHBOARD_SECRE
 
 **Uwaga:** ID kanału AFK (`AFK_CHANNEL_ID`) i ID kanału głosowego Afazja wzmiankowanego w ogłoszeniach (`EVENT_VOICE_CHANNEL_ID`) są zapisane na stałe w `bot.py` — nie mają odpowiadających zmiennych środowiskowych.
 
+Zmienna `ROLE_ANNOUNCE_CHANNEL_ID` (dawny kanał ogłoszeń o automatycznym awansie) **nie jest już używana** i można ją bezpiecznie usunąć z Railway.
+
 ---
 
 ## 🗄️ Schemat bazy danych
@@ -145,7 +144,7 @@ Wszystkie endpointy wymagają nagłówka `Authorization: Bearer <DASHBOARD_SECRE
 ```
 voice_sessions      – sesje na kanałach głosowych
 report_log          – historia wysłanych raportów
-role_grants          – historia nadanych rang
+role_grants          – historyczny log nadanych rang (obecnie niewypełniany automatycznie)
 ```
 
 ---
