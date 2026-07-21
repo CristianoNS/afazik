@@ -136,7 +136,7 @@ async def on_member_join(member: discord.Member):
         print(f"on_member_join – błąd sprawdzania zaproszeń: {e}")
 
     if used_invite is not None:
-        inviter = used_invite.inviter.mention if used_invite.inviter else "nieznanego użytkownika"
+        inviter = used_invite.inviter.display_name if used_invite.inviter else "nieznanego użytkownika"
         await ch.send(
             f"👋 **{member.display_name}** dołączył/a do serwera – zaproszony/a przez {inviter} "
             f"(kod: `{used_invite.code}`)."
