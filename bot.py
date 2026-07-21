@@ -27,6 +27,7 @@ ROLE_BROJLER_ID    = int(os.getenv("ROLE_BROJLER_ID", "0"))
 DASHBOARD_SECRET   = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
 DASHBOARD_PORT     = int(os.getenv("PORT", "8080"))
 AFK_CHANNEL_ID     = 1487890304362217562
+EVENT_VOICE_CHANNEL_ID = 1485261013434765376  # kanał głosowy Afazja (wzmianka w ogłoszeniach)
 
 # ── Ogłoszenia Afazja ──────────────────────────────────────────────────────────
 ANNOUNCE_CHANNEL_ID = int(os.getenv("ANNOUNCE_CHANNEL_ID", "0"))
@@ -150,7 +151,7 @@ async def _send_afazja_main(weekday: int = 5):
     opis = (
         "Dosyć siedzenia w kurniku i dziobania ziarna! Wpadnij na event sprawdzić, komu pierwszemu **odpadną pióra**. "
         "Gwarantujemy taki kocioł, że zapomnisz jak się nazywasz. Jak zawsze: gramy 4fun!\n\n"
-        "🕗 **Widzimy się tutaj:** <#1485261013434765376>\n\n"
+        "🕗 **Widzimy się tutaj:** <#" + str(EVENT_VOICE_CHANNEL_ID) + ">\n\n"
         "Znieś jajo pod postem *(rzuć reakcję)*, jeśli meldujesz się na grzędzie!"
     )
     embed = discord.Embed(title=title, description=opis)
@@ -168,7 +169,7 @@ async def _send_afazja_reminder_1():
         "Hej nieloty! Wieczorna afazja zbliża się wielkimi krokami. "
         "Rozgrzejcie gardła, nastrojcie klawiatury i przypomnijcie znajomym. "
         "Do zobaczenia na kanale!\n\n"
-        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
+        "🕛 **Widzimy się tutaj:** <#" + str(EVENT_VOICE_CHANNEL_ID) + ">"
     )
     embed = discord.Embed(title="Jeszcze tylko kilka godzin!", description=opis)
     if ANNOUNCE_IMAGE_URL:
@@ -183,7 +184,7 @@ async def _send_afazja_reminder_2():
     opis = (
         "Dość gdakania na czacie — czas wejść na kanał i pokazać co potrafisz. "
         "Do zobaczenia na grzędzi!\n\n"
-        "🕛 **Widzimy się tutaj:** <#1485261013434765376>"
+        "🕛 **Widzimy się tutaj:** <#" + str(EVENT_VOICE_CHANNEL_ID) + ">"
     )
     embed = discord.Embed(title="Zaczynamy za chwilę!", description=opis)
     if ANNOUNCE_IMAGE_URL:
@@ -271,28 +272,38 @@ async def _apply_roles(member: discord.Member, total_seconds: int, announce_ch):
     role_pisklak   = guild.get_role(ROLE_PISKLAK_ID)   if ROLE_PISKLAK_ID   else None
     role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
     role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
+    role_changed   = False
     try:
         if total_seconds >= THRESHOLD_BROJLER * 3600 and role_brojler:
             if role_brojler not in member.roles:
                 await member.add_roles(role_brojler, reason="Voice tracker – próg BROJLER")
                 await db.log_role_grant(member.id, member.display_name, "BROJLER", total_seconds)
+                role_changed = True
                 if announce_ch:
                     await announce_ch.send(MSG_BROJLER.format(
                         mention=member.mention, role=role_brojler.name, hours=THRESHOLD_BROJLER))
             if role_opierzony and role_opierzony in member.roles:
                 await member.remove_roles(role_opierzony, reason="Awans na BROJLER")
+                role_changed = True
         elif total_seconds >= THRESHOLD_OPIERZONY * 3600 and role_opierzony:
             has_brojler = role_brojler and role_brojler in member.roles
             if not has_brojler and role_opierzony not in member.roles:
                 await member.add_roles(role_opierzony, reason="Voice tracker – próg OPIERZONY")
                 await db.log_role_grant(member.id, member.display_name, "OPIERZONY", total_seconds)
+                role_changed = True
                 if announce_ch:
                     await announce_ch.send(MSG_OPIERZONY.format(
                         mention=member.mention, role=role_opierzony.name, hours=THRESHOLD_OPIERZONY))
             if role_pisklak and role_pisklak in member.roles:
                 await member.remove_roles(role_pisklak, reason="Awans na OPIERZONY")
+                role_changed = True
     except discord.Forbidden:
         pass
+
+    if role_changed:
+        # Ranga faktycznie się zmieniła – unieważnij cache dashboardu,
+        # żeby od razu pokazał aktualny stan zamiast czekać do 60s.
+        _member_roles_cache["data"] = None
 
 # ── Komendy ────────────────────────────────────────────────────────────────────
 
@@ -421,46 +432,56 @@ async def api_online(request):
         "is_special":   s.get("is_special", False),
     } for uid, s in tracker.active.items()])
 
+def _rank_for_member(member: discord.Member, role_brojler, role_opierzony) -> str:
+    """Pomocnicza funkcja – wyznacza rangę na podstawie posiadanych ról."""
+    member_role_ids = {r.id for r in member.roles}
+    if role_brojler and role_brojler.id in member_role_ids:
+        return "BROJLER"
+    if role_opierzony and role_opierzony.id in member_role_ids:
+        return "OPIERZONY"
+    return "PISKLAK"
+
+# Prosty cache w pamięci – odświeżany maksymalnie raz na 60 sekund,
+# żeby dashboard nie zasypywał Discord API zapytaniami fetch_members
+# przy każdym odświeżeniu strony.
+_member_roles_cache = {"data": None, "fetched_at": 0}
+MEMBER_ROLES_CACHE_TTL = 60  # sekundy
+
 async def api_member_roles(request):
-    """Zwraca rangę każdego membera — świeże dane z Discord API (nie cache)."""
+    """Zwraca rangę każdego membera. Świeże dane z Discord API, z cache na 60s."""
     if not _auth(request): return web.Response(status=401)
+
+    now_ts = datetime.utcnow().timestamp()
+    if _member_roles_cache["data"] is not None and \
+       (now_ts - _member_roles_cache["fetched_at"]) < MEMBER_ROLES_CACHE_TTL:
+        return _json(_member_roles_cache["data"])
+
     result = {}
     for guild in bot.guilds:
         role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
         role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
         try:
-            # fetch_members pobiera świeże dane z API, omijając stary cache
+            # fetch_members pobiera świeże dane z API, omijając stary cache discord.py
             async for member in guild.fetch_members(limit=None):
                 if member.bot:
                     continue
-                member_role_ids = {r.id for r in member.roles}
-                if role_brojler and role_brojler.id in member_role_ids:
-                    rank = "BROJLER"
-                elif role_opierzony and role_opierzony.id in member_role_ids:
-                    rank = "OPIERZONY"
-                else:
-                    rank = "PISKLAK"
                 result[str(member.id)] = {
                     "display_name": member.display_name,
-                    "rank": rank,
+                    "rank": _rank_for_member(member, role_brojler, role_opierzony),
                 }
         except Exception as e:
             print(f"fetch_members error: {e}")
-            # Fallback do cache jeśli API nie odpowiada
+            # Fallback do lokalnego cache discord.py jeśli Discord API nie odpowiada
             for member in guild.members:
                 if member.bot:
                     continue
-                member_role_ids = {r.id for r in member.roles}
-                if role_brojler and role_brojler.id in member_role_ids:
-                    rank = "BROJLER"
-                elif role_opierzony and role_opierzony.id in member_role_ids:
-                    rank = "OPIERZONY"
-                else:
-                    rank = "PISKLAK"
                 result[str(member.id)] = {
                     "display_name": member.display_name,
-                    "rank": rank,
+                    "rank": _rank_for_member(member, role_brojler, role_opierzony),
                 }
+
+    _member_roles_cache["data"]       = result
+    _member_roles_cache["fetched_at"] = now_ts
     return _json(result)
 
 async def api_monthly_activity(request):
