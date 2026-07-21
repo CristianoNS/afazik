@@ -92,7 +92,7 @@ class Database:
                 FROM voice_sessions vs
                 WHERE joined_at >= {cutoff}
                   AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
-                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 100
+                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 500
             """)
             return [dict(r) for r in rows]
 
@@ -105,7 +105,7 @@ class Database:
                     SUM(COALESCE(duration_s,0)) AS total_seconds
                 FROM voice_sessions vs
                 WHERE is_special=TRUE AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
-                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 100
+                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 500
             """)
             return [dict(r) for r in rows]
 
@@ -148,16 +148,17 @@ class Database:
 
     async def get_daily_activity(self, days: int = 30) -> list[dict]:
         """Aktywność dzienna (suma sekund) z ostatnich N dni – do wykresu."""
+        days = int(days)  # zabezpieczenie przed nieoczekiwanym typem
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(f"""
+            rows = await conn.fetch("""
                 SELECT DATE(joined_at AT TIME ZONE 'Europe/Warsaw') AS day,
                        SUM(COALESCE(duration_s, 0)) AS total_seconds,
                        COUNT(DISTINCT user_id) AS unique_users
                 FROM voice_sessions
-                WHERE joined_at >= NOW() - INTERVAL '{days} days'
+                WHERE joined_at >= NOW() - ($1 || ' days')::INTERVAL
                   AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
                 GROUP BY day ORDER BY day ASC
-            """)
+            """, str(days))
             return [dict(r) for r in rows]
 
     # ── Logi raportów i rang ──────────────────────────────────────────────────
@@ -184,34 +185,36 @@ class Database:
 
     async def get_monthly_activity(self, months: int = 12) -> list[dict]:
         """Aktywność miesięczna – do wykresu porównawczego."""
+        months = int(months)
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(f"""
+            rows = await conn.fetch("""
                 SELECT
                     TO_CHAR(DATE_TRUNC('month', joined_at AT TIME ZONE 'Europe/Warsaw'), 'YYYY-MM') AS month,
                     SUM(COALESCE(duration_s, 0)) AS total_seconds,
                     COUNT(DISTINCT user_id) AS unique_users
                 FROM voice_sessions
-                WHERE joined_at >= NOW() - INTERVAL '{months} months'
+                WHERE joined_at >= NOW() - ($1 || ' months')::INTERVAL
                   AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
                 GROUP BY DATE_TRUNC('month', joined_at AT TIME ZONE 'Europe/Warsaw')
                 ORDER BY 1 ASC
-            """)
+            """, str(months))
             return [dict(r) for r in rows]
 
     async def get_weekly_activity(self, weeks: int = 8) -> list[dict]:
         """Aktywność tygodniowa – do wykresu porównawczego."""
+        weeks = int(weeks)
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(f"""
+            rows = await conn.fetch("""
                 SELECT
                     TO_CHAR(DATE_TRUNC('week', joined_at AT TIME ZONE 'Europe/Warsaw'), 'YYYY-MM-DD') AS week,
                     SUM(COALESCE(duration_s, 0)) AS total_seconds,
                     COUNT(DISTINCT user_id) AS unique_users
                 FROM voice_sessions
-                WHERE joined_at >= NOW() - INTERVAL '{weeks} weeks'
+                WHERE joined_at >= NOW() - ($1 || ' weeks')::INTERVAL
                   AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
                 GROUP BY DATE_TRUNC('week', joined_at AT TIME ZONE 'Europe/Warsaw')
                 ORDER BY 1 ASC
-            """)
+            """, str(weeks))
             return [dict(r) for r in rows]
 
     async def get_records(self) -> dict:
