@@ -5,6 +5,7 @@ import asyncio
 import os
 import json
 import secrets
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -37,6 +38,8 @@ intents.voice_states    = True
 intents.members         = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 bot.remove_command("help")
+
+BOT_START_TIME = time.monotonic()  # do liczenia uptime
 
 db      = Database()
 tracker = VoiceTracker(db, SPECIAL_CHANNEL_ID)
@@ -425,8 +428,44 @@ async def api_server_stats(request):
     if not _auth(request): return web.Response(status=401)
     return _json(await db.get_server_stats())
 
+def _fmt_uptime(seconds: int) -> str:
+    """Zamienia sekundy na czytelny format Xd Yh Zmin."""
+    d, rem = divmod(int(seconds), 86400)
+    h, rem = divmod(rem, 3600)
+    m, _   = divmod(rem, 60)
+    parts = []
+    if d: parts.append(f"{d}d")
+    if h: parts.append(f"{h}h")
+    parts.append(f"{m}min")
+    return " ".join(parts)
+
 async def api_health(request):
-    return _json({"status": "ok", "bot": str(bot.user)})
+    """Rozszerzony health-check – status bota, bazy i śledzenia głosowego."""
+    uptime_s = time.monotonic() - BOT_START_TIME
+
+    # Sprawdź żywotność połączenia z bazą prostym zapytaniem
+    db_connected = False
+    db_latency_ms = None
+    try:
+        t0 = time.monotonic()
+        async with db.pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        db_latency_ms = round((time.monotonic() - t0) * 1000, 1)
+        db_connected = True
+    except Exception as e:
+        print(f"health-check: błąd bazy – {e}")
+
+    return _json({
+        "status":                "ok" if db_connected else "degraded",
+        "bot":                   str(bot.user) if bot.user else None,
+        "uptime_seconds":        round(uptime_s, 1),
+        "uptime_human":          _fmt_uptime(uptime_s),
+        "guilds_connected":      len(bot.guilds),
+        "active_voice_sessions": len(tracker.active),
+        "database_connected":    db_connected,
+        "database_latency_ms":  db_latency_ms,
+        "discord_latency_ms":    round(bot.latency * 1000, 1) if bot.latency else None,
+    })
 
 def build_app() -> web.Application:
     app = web.Application()
