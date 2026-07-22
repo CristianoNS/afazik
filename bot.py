@@ -161,6 +161,8 @@ async def on_member_join(member: discord.Member):
 
 @bot.event
 async def on_voice_state_update(member, before, after):
+    if member.bot:
+        return  # boty (np. muzyczne) nigdy nie mają liczonego czasu na kanałach
     now = datetime.utcnow()
     channel_changed = before.channel != after.channel
     deaf_changed    = (before.deaf != after.deaf) or (before.self_deaf != after.self_deaf)
