@@ -426,10 +426,14 @@ function renderRankings(data) {
     const rankCell = i===0
       ? `<span class="rank-num"><i class="ti ti-crown" aria-hidden="true"></i></span>`
       : `<span class="rank-num">${i+1}</span>`;
+    const status = getRoleStatus(r.display_name, secs);
+    const roleBadge = status === 'brojler'   ? `<span class="role-BROJLER">BROJLER</span>`
+                     : status === 'opierzony' ? `<span class="role-OPIERZONY">OPIERZONY</span>`
+                     : '';
     const prog = currentPeriod === 'alltime' ? renderProgress(secs, r.display_name) : '';
     return `<tr>
       <td>${rankCell}</td>
-      <td><div class="row-user"><div class="avatar">${initials(r.display_name||'?')}</div>${r.display_name||'–'}</div></td>
+      <td><div class="row-user"><div class="avatar">${initials(r.display_name||'?')}</div><span>${r.display_name||'–'}</span>${roleBadge}</div></td>
       <td><span class="time-badge">${fmtTime(secs)}</span></td>
       ${currentPeriod === 'alltime' ? `<td>${prog}</td>` : ''}
     </tr>`;
