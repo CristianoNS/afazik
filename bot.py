@@ -153,12 +153,12 @@ async def on_member_join(member: discord.Member):
     if used_invite is not None:
         inviter = used_invite.inviter.display_name if used_invite.inviter else "nieznanego użytkownika"
         await ch.send(
-            f"👋 **{member.display_name}** dołączył/a do serwera – zaproszony/a przez {inviter} "
+            f"**{member.display_name}** dołączył/a do serwera – zaproszony/a przez {inviter} "
             f"(kod: `{used_invite.code}`)."
         )
     elif disappeared_code is not None:
         await ch.send(
-            f"👋 **{member.display_name}** dołączył/a do serwera – prawdopodobnie użył/a "
+            f"**{member.display_name}** dołączył/a do serwera – prawdopodobnie użył/a "
             f"jednorazowego zaproszenia `{disappeared_code}`, które właśnie wygasło."
         )
     else:
@@ -168,9 +168,9 @@ async def on_member_join(member: discord.Member):
         except (discord.Forbidden, discord.NotFound):
             vanity = None
         if vanity is not None:
-            await ch.send(f"👋 **{member.display_name}** dołączył/a do serwera przez własny link serwera (vanity URL).")
+            await ch.send(f"**{member.display_name}** dołączył/a do serwera przez własny link serwera (vanity URL).")
         else:
-            await ch.send(f"👋 **{member.display_name}** dołączył/a do serwera (nie udało się ustalić zaproszenia).")
+            await ch.send(f"**{member.display_name}** dołączył/a do serwera (nie udało się ustalić zaproszenia).")
 
 @bot.event
 async def on_voice_state_update(member, before, after):
