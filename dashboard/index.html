@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Voice Tracker Dashboard</title>
+<title>Afazjometr Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.44.0/tabler-icons.min.css">
 <style>
@@ -63,9 +63,6 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', syste
 .page { display: none; }
 .page.active { display: flex; flex-direction: column; gap: 16px; }
 
-/* ── Two-col layout ── */
-.two-col { display: grid; grid-template-columns: 1fr 270px; gap: 14px; align-items: start; }
-
 /* ── Panel ── */
 .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .panel-hdr { padding: 13px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -106,24 +103,6 @@ tr:hover td { background: rgba(255,255,255,.02); }
 .prog-label { font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 3px; }
 .prog-label i { font-size: 11px; color: var(--success); }
 
-/* ── Side panels ── */
-.side-col { display: flex; flex-direction: column; gap: 12px; }
-
-/* ── Online list ── */
-.online-list { padding: 10px 0; }
-.online-item { display: flex; align-items: center; gap: 9px; padding: 7px 16px; transition: background .15s; }
-.online-item:hover { background: rgba(255,255,255,.02); }
-.online-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
-.online-info { flex: 1; min-width: 0; }
-.online-name { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.online-ch { font-size: 10px; color: var(--muted); margin-top: 1px; display: flex; align-items: center; gap: 4px; }
-.online-ch i { font-size: 10px; }
-.online-time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
-.online-empty { padding: 20px 16px; color: var(--muted); font-size: 12px; text-align: center; }
-
-/* ── Pie chart ── */
-.pie-body { padding: 14px 16px; }
-
 /* ── Chart ── */
 .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 16px 10px; position: relative; }
 .chart-title { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 12px; }
@@ -139,14 +118,6 @@ tr:hover td { background: rgba(255,255,255,.02); }
 #toast.ok  { border-color: var(--success); color: var(--success); }
 #toast.err { border-color: var(--danger); color: var(--danger); }
 
-/* ── Rank filter pills ── */
-.rank-pill { padding: 4px 11px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border2); background: transparent; color: var(--muted); transition: all .15s; white-space: nowrap; }
-.rank-pill:hover { color: var(--text); }
-.rank-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.rank-pill[data-rank="BROJLER"].active { background: var(--success); border-color: var(--success); }
-.rank-pill[data-rank="OPIERZONY"].active { background: var(--warning); border-color: var(--warning); }
-.rank-pill[data-rank="PISKLAK"].active { background: var(--muted); border-color: var(--muted); }
-
 /* ── Record cards ── */
 .rec-card { background: var(--card); border-radius: 10px; padding: 16px; }
 .rec-icon { width: 34px; height: 34px; border-radius: 8px; background: var(--bg); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
@@ -158,7 +129,6 @@ tr:hover td { background: rgba(255,255,255,.02); }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   .sidebar { display: none; }
-  .two-col { grid-template-columns: 1fr; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .charts-grid { grid-template-columns: 1fr; }
 }
@@ -169,7 +139,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
 
 <!-- ── Sidebar ── -->
 <aside class="sidebar">
-  <div class="logo"><i class="ti ti-microphone" aria-hidden="true"></i> Voice Tracker</div>
+  <div class="logo"><i class="ti ti-microphone" aria-hidden="true"></i> Afazjometr Dashboard</div>
   <nav class="nav">
     <div class="ni active" data-page="rankings"><i class="ti ti-chart-bar" aria-hidden="true"></i> Rankingi</div>
     <div class="ni" data-page="chart"><i class="ti ti-chart-line" aria-hidden="true"></i> Wykresy</div>
@@ -205,17 +175,9 @@ tr:hover td { background: rgba(255,255,255,.02); }
       <div class="stat-grid" id="server-stat-grid"></div>
       <div class="stat-grid" id="stat-grid"></div>
 
-      <div class="two-col">
-        <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;flex-direction:column;gap:14px">
           <div class="panel">
             <div class="panel-hdr">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-                <span style="font-size:11px;color:var(--muted)">Ranga:</span>
-                <span class="rank-pill active" data-rank="all" onclick="setRankFilter(this,'all')">Wszyscy</span>
-                <span class="rank-pill" data-rank="BROJLER" onclick="setRankFilter(this,'BROJLER')">BROJLER</span>
-                <span class="rank-pill" data-rank="OPIERZONY" onclick="setRankFilter(this,'OPIERZONY')">OPIERZONY</span>
-                <span class="rank-pill" data-rank="PISKLAK" onclick="setRankFilter(this,'PISKLAK')">PISKLAK</span>
-              </div>
               <div class="tabs" id="period-tabs">
                 <div class="tab active" data-period="week">7 dni</div>
                 <div class="tab" data-period="month">30 dni</div>
@@ -229,27 +191,10 @@ tr:hover td { background: rgba(255,255,255,.02); }
               </div>
             </div>
             <table>
-              <thead><tr><th>#</th><th>Użytkownik</th><th>Czas łącznie</th><th>Do następnej rangi</th></tr></thead>
+              <thead><tr><th>#</th><th>Użytkownik</th><th>Czas łącznie</th><th id="rank-col-header" style="display:none">Do następnej rangi</th></tr></thead>
               <tbody id="ranking-body"><tr><td colspan="4" class="loading">Ładowanie...</td></tr></tbody>
             </table>
           </div>
-        </div>
-
-        <div class="side-col">
-          <!-- Online teraz -->
-          <div class="panel">
-            <div class="panel-hdr"><span class="panel-title"><i class="ti ti-headphones" aria-hidden="true"></i> Online teraz</span><span id="online-count" style="font-size:11px;color:var(--muted)"></span></div>
-            <div id="online-list" class="online-list"><div class="online-empty">Ładowanie...</div></div>
-          </div>
-
-          <!-- Wykres kołowy -->
-          <div class="panel">
-            <div class="panel-hdr"><span class="panel-title"><i class="ti ti-chart-pie" aria-hidden="true"></i> Udział top 5</span></div>
-            <div class="pie-body">
-              <div style="position:relative;height:200px"><canvas id="pieChart"></canvas></div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -339,13 +284,11 @@ tr:hover td { background: rgba(255,255,255,.02); }
 const THRESHOLDS = { OPIERZONY: 48 * 3600, BROJLER: 96 * 3600 };
 const PERIOD_LABELS = { week:'7 dni', month:'30 dni', quarter:'Kwartał', alltime:'All time', special:'Afazja' };
 const PAGE_TITLES = { rankings:'Rankingi aktywności', chart:'Wykresy aktywności', reports:'Historia raportów', roles:'Przyznane rangi', inactive:'Nieaktywni członkowie', records:'Rekordy serwera' };
-const PIE_COLORS = ['#5b7cfa','#3fb97e','#d9a441','#c95b7a','#7a7a85'];
 
 let currentPeriod = 'week';
 let currentRankData = [];
 let memberRoles = {};
-let pieChart, chartActivity, chartUsers;
-let onlineTimer;
+let chartActivity, chartUsers;
 
 // ── Utils ──────────────────────────────────────────────────────────────────
 
@@ -439,6 +382,8 @@ document.querySelectorAll('#period-tabs .tab').forEach(tab => {
     tab.classList.add('active');
     currentPeriod = tab.dataset.period;
     document.getElementById('search-box').value = '';
+    const rch = document.getElementById('rank-col-header');
+    if (rch) rch.style.display = currentPeriod === 'alltime' ? '' : 'none';
     loadRankings(currentPeriod);
   });
 });
@@ -454,8 +399,6 @@ async function loadRankings(period) {
     currentRankData = data;
     renderRankings(data);
     renderStatCards(data);
-    renderPie(data);
-    if (activeRankFilter !== 'all') applyRankFilter();
     setRefreshTime();
   } catch(e) {
     tbody.innerHTML = `<tr><td colspan="4" class="loading" style="color:var(--danger)">Błąd ładowania danych.</td></tr>`;
@@ -483,12 +426,12 @@ function renderRankings(data) {
     const rankCell = i===0
       ? `<span class="rank-num"><i class="ti ti-crown" aria-hidden="true"></i></span>`
       : `<span class="rank-num">${i+1}</span>`;
-    const prog = renderProgress(secs, r.display_name);
+    const prog = currentPeriod === 'alltime' ? renderProgress(secs, r.display_name) : '';
     return `<tr>
       <td>${rankCell}</td>
       <td><div class="row-user"><div class="avatar">${initials(r.display_name||'?')}</div>${r.display_name||'–'}</div></td>
       <td><span class="time-badge">${fmtTime(secs)}</span></td>
-      <td>${prog}</td>
+      ${currentPeriod === 'alltime' ? `<td>${prog}</td>` : ''}
     </tr>`;
   }).join('');
 }
@@ -514,7 +457,6 @@ function renderStatCards(data) {
     <div class="stat-card"><div class="sc-label">Łącznie osób</div><div class="sc-value">${data.length}</div><div class="sc-sub">aktywnych w tym okresie</div></div>
     <div class="stat-card"><div class="sc-label">Lider</div><div class="sc-value" style="font-size:17px;line-height:1.4">${data[0]?.display_name||'–'}</div><div class="sc-sub">${fmtTime(data[0]?.total_seconds||0)} łącznie</div></div>
     <div class="stat-card"><div class="sc-label">Łączny czas</div><div class="sc-value">${fmtTime(total)}</div><div class="sc-sub">wszystkich członków</div></div>
-    <div class="stat-card" id="sc-online"><div class="sc-label">Online teraz</div><div class="sc-value">—</div><div class="sc-sub">na kanałach głosowych</div></div>
   `;
 }
 
@@ -534,66 +476,6 @@ function exportCSV() {
   a.download = `ranking-${PERIOD_LABELS[currentPeriod]||currentPeriod}-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   toast('Plik CSV pobrany');
-}
-
-// ── Online teraz ───────────────────────────────────────────────────────────
-
-async function loadOnline() {
-  const el = document.getElementById('online-list');
-  const sc = document.getElementById('sc-online');
-  try {
-    const data = await apiFetch('/api/online');
-    const count = data.length;
-    if (sc) sc.innerHTML = `<div class="sc-label">Online teraz</div><div class="sc-value">${count}</div><div class="sc-sub">na kanałach głosowych</div>`;
-    document.getElementById('online-count').textContent = `${count} os.`;
-    if (!count) {
-      el.innerHTML = '<div class="online-empty">Nikt nie jest teraz na voice</div>'; return;
-    }
-    el.innerHTML = data.map(r=>`
-      <div class="online-item">
-        <div class="online-dot"></div>
-        <div class="online-info">
-          <div class="online-name">${r.display_name}</div>
-          <div class="online-ch">${r.is_special?'<i class="ti ti-sparkles" aria-hidden="true"></i> ':''}#${r.channel_name}</div>
-        </div>
-        <div class="online-time">${fmtOnline(r.elapsed_s)}</div>
-      </div>`).join('');
-  } catch(e) {
-    el.innerHTML = '<div class="online-empty" style="color:var(--muted)">Niedostępne</div>';
-  }
-}
-
-function startOnlineTimer() {
-  clearInterval(onlineTimer);
-  onlineTimer = setInterval(()=>{
-    if (document.querySelector('.ni.active')?.dataset.page === 'rankings') loadOnline();
-  }, 30000);
-}
-
-// ── Wykres kołowy ──────────────────────────────────────────────────────────
-
-function renderPie(data) {
-  const top5 = data.slice(0,5);
-  const totalAll = data.reduce((a,r)=>a+parseInt(r.total_seconds||0),0);
-  const labels = top5.map(r=>r.display_name||'–');
-  const values = top5.map(r=>+(parseInt(r.total_seconds||0)/3600).toFixed(1));
-  const rest = Math.max(0, totalAll - top5.reduce((a,r)=>a+parseInt(r.total_seconds||0),0));
-  if (rest > 0) { labels.push('Pozostali'); values.push(+(rest/3600).toFixed(1)); PIE_COLORS[5]='#4a4a52'; }
-
-  if (pieChart) pieChart.destroy();
-  const ctx = document.getElementById('pieChart').getContext('2d');
-  pieChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: { labels, datasets: [{ data: values, backgroundColor: PIE_COLORS.slice(0,labels.length), borderWidth: 2, borderColor: '#1a1b23' }] },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { position: 'bottom', labels: { color: '#85868f', font: { size: 11 }, padding: 12, boxWidth: 10 } },
-        tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.raw}h` } }
-      },
-      cutout: '60%'
-    }
-  });
 }
 
 // ── Wykresy ───────────────────────────────────────────────────────────────
@@ -673,27 +555,6 @@ async function loadInactive() {
       <td style="color:var(--muted);font-size:12px">${r.joined_at?new Date(r.joined_at).toLocaleDateString('pl-PL'):'–'}</td>
     </tr>`).join('');
   } catch(e) { tbody.innerHTML='<tr><td colspan="3" class="loading" style="color:var(--danger)">Błąd.</td></tr>'; }
-}
-
-// ── Filtr rang ─────────────────────────────────────────────────────────────
-
-let activeRankFilter = 'all';
-
-function setRankFilter(el, rank) {
-  document.querySelectorAll('.rank-pill').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
-  activeRankFilter = rank;
-  applyRankFilter();
-}
-
-function applyRankFilter() {
-  document.querySelectorAll('#ranking-body tr').forEach(row => {
-    if (activeRankFilter === 'all') { row.style.display = ''; return; }
-    const name = row.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
-    const secs = parseInt(currentRankData.find(r => r.display_name === name)?.total_seconds || 0);
-    const status = getRoleStatus(name, secs).toUpperCase();
-    row.style.display = status === activeRankFilter ? '' : 'none';
-  });
 }
 
 // ── Statystyki serwera ──────────────────────────────────────────────────────
@@ -825,8 +686,6 @@ async function loadMemberRolesThenRankings() {
   await loadMemberRoles();
   loadPage('rankings');
   loadServerStats();
-  loadOnline();
-  startOnlineTimer();
 }
 </script>
 </body>
