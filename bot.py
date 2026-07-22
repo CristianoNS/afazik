@@ -29,6 +29,7 @@ DASHBOARD_SECRET   = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
 DASHBOARD_PORT     = int(os.getenv("PORT", "8080"))
 AFK_CHANNEL_ID     = 1487890304362217562
 NOTIFICATIONS_CHANNEL_ID = 1529222104384274502  # kanał: przekroczenie progów + nieaktywność z rangą
+MAIN_GUILD_ID = 1485261012616610005  # jedyny serwer, na którym bot ma realnie działać
 EVENT_VOICE_CHANNEL_ID = 1485261013434765376  # kanał głosowy Afazja (wzmianka w ogłoszeniach)
 QUIET_HOURS_START = int(os.getenv("QUIET_HOURS_START", "8"))   # od której godziny wysyłamy powiadomienia
 QUIET_HOURS_END   = int(os.getenv("QUIET_HOURS_END", "22"))   # do której godziny (wyłącznie) wysyłamy powiadomienia
@@ -44,6 +45,17 @@ intents.members         = True
 intents.invites         = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 bot.remove_command("help")
+
+def _get_main_guild():
+    """Zwraca WYŁĄCZNIE główny serwer (MAIN_GUILD_ID).
+
+    Bot bywa czasem dodany też na inne serwery (np. testowe) – bez tego
+    ograniczenia dane osób obecnych na kilku serwerach jednocześnie
+    nadpisywały się wzajemnie (np. ranga widoczna na jednym serwerze
+    znikała, bo pętla po bot.guilds przetwarzała potem serwer testowy
+    bez tej rangi i nadpisywała poprawny wynik).
+    """
+    return bot.get_guild(MAIN_GUILD_ID)
 
 BOT_START_TIME = time.monotonic()  # do liczenia uptime
 
@@ -75,8 +87,9 @@ async def on_ready():
     quarterly_report_task.start()
     afazja_announcer.start()
     threshold_and_stale_checker.start()
-    for guild in bot.guilds:
-        await _refresh_invite_cache(guild)
+    main_guild = _get_main_guild()
+    if main_guild:
+        await _refresh_invite_cache(main_guild)
     print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
 
 def _is_deaf(vs) -> bool:
@@ -325,7 +338,8 @@ async def _send_quarterly_report():
 async def _get_inactive_members() -> list[discord.Member]:
     active_ids = await db.get_all_voice_user_ids()
     result = []
-    for guild in bot.guilds:
+    guild = _get_main_guild()
+    if guild:
         for member in guild.members:
             if member.bot:
                 continue
@@ -347,14 +361,16 @@ async def threshold_and_stale_checker():
     if _is_quiet_hours():
         return  # poza oknem 8:00–22:00 – nic nie sprawdzamy ani nie wysyłamy;
                 # najbliższe uruchomienie w oknie aktywnym złapie te same zdarzenia
-    for guild in bot.guilds:
-        try:
-            members_by_id = {m.id: m async for m in guild.fetch_members(limit=None)}
-        except Exception as e:
-            print(f"threshold_and_stale_checker fetch_members error: {e}")
-            members_by_id = {m.id: m for m in guild.members}
-        await _check_threshold_crossings(guild, members_by_id)
-        await _check_stale_ranks(guild, members_by_id)
+    guild = _get_main_guild()
+    if not guild:
+        return
+    try:
+        members_by_id = {m.id: m async for m in guild.fetch_members(limit=None)}
+    except Exception as e:
+        print(f"threshold_and_stale_checker fetch_members error: {e}")
+        members_by_id = {m.id: m for m in guild.members}
+    await _check_threshold_crossings(guild, members_by_id)
+    await _check_stale_ranks(guild, members_by_id)
 
 async def _check_threshold_crossings(guild: discord.Guild, members_by_id: dict):
     """Informuje o przekroczeniu progu 48h (OPIERZONY) i 96h (BROJLER).
@@ -592,14 +608,15 @@ _member_roles_cache = {"data": None, "fetched_at": 0.0}
 MEMBER_ROLES_CACHE_TTL = 60  # sekundy
 
 async def _get_all_members_ranked(force_refresh: bool = False) -> dict:
-    """Zwraca {user_id_str: {"display_name":..., "rank":...}} dla wszystkich guildów, z cache."""
+    """Zwraca {user_id_str: {"display_name":..., "rank":...}} z JEDYNEGO głównego serwera, z cache."""
     now_ts = time.monotonic()
     if not force_refresh and _member_roles_cache["data"] is not None and \
        (now_ts - _member_roles_cache["fetched_at"]) < MEMBER_ROLES_CACHE_TTL:
         return _member_roles_cache["data"]
 
     result = {}
-    for guild in bot.guilds:
+    guild = _get_main_guild()
+    if guild:
         role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
         role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
         try:
