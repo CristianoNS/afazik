@@ -407,11 +407,22 @@ async function loadRankings(period) {
   }
 }
 
-function getRoleStatus(displayName, secs, userId) {
+// Zwraca WYŁĄCZNIE potwierdzoną rangę z Discorda (bez zgadywania z godzin).
+// Używane do odznaki przy nazwisku – jeśli brak dopasowania, zwraca null (brak odznaki),
+// zamiast fałszywie sugerować rangę na podstawie godzin z wybranego okresu.
+function getConfirmedRank(displayName, userId) {
   const rank = (userId && memberRolesById[String(userId)])
              || memberRolesByName[(displayName || '').toLowerCase()];
   if (rank === 'BROJLER')   return 'brojler';
   if (rank === 'OPIERZONY') return 'opierzony';
+  return null;
+}
+
+// Zwraca rangę do paska postępu w All time – tu fallback z godzin ma sens,
+// bo to tylko szacunek dystansu do progu, a nie twierdzenie o realnej randze.
+function getRoleStatus(displayName, secs, userId) {
+  const confirmed = getConfirmedRank(displayName, userId);
+  if (confirmed) return confirmed;
   if (secs >= THRESHOLDS.BROJLER)   return 'brojler';
   if (secs >= THRESHOLDS.OPIERZONY) return 'opierzony';
   return 'pisklak';
@@ -428,9 +439,9 @@ function renderRankings(data) {
     const rankCell = i===0
       ? `<span class="rank-num"><i class="ti ti-crown" aria-hidden="true"></i></span>`
       : `<span class="rank-num">${i+1}</span>`;
-    const status = getRoleStatus(r.display_name, secs, r.user_id);
-    const roleBadge = status === 'brojler'   ? `<span class="role-BROJLER">BROJLER</span>`
-                     : status === 'opierzony' ? `<span class="role-OPIERZONY">OPIERZONY</span>`
+    const confirmedRank = getConfirmedRank(r.display_name, r.user_id);
+    const roleBadge = confirmedRank === 'brojler'   ? `<span class="role-BROJLER">BROJLER</span>`
+                     : confirmedRank === 'opierzony' ? `<span class="role-OPIERZONY">OPIERZONY</span>`
                      : '';
     const prog = currentPeriod === 'alltime' ? renderProgress(secs, r.display_name, r.user_id) : '';
     return `<tr>
