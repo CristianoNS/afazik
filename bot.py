@@ -624,6 +624,50 @@ async def _get_all_members_ranked(force_refresh: bool = False) -> dict:
     _member_roles_cache["fetched_at"] = now_ts
     return result
 
+async def api_debug_roles(request):
+    """Diagnostyka – pokazuje surowe dane o rangach, żeby namierzyć rozbieżności."""
+    if not _auth(request): return web.Response(status=401)
+    debug = {
+        "ROLE_BROJLER_ID_z_konfiguracji":   ROLE_BROJLER_ID,
+        "ROLE_OPIERZONY_ID_z_konfiguracji": ROLE_OPIERZONY_ID,
+        "guilds": []
+    }
+    for guild in bot.guilds:
+        role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
+        role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
+        guild_info = {
+            "guild_name": guild.name,
+            "guild_id": guild.id,
+            "rola_BROJLER_znaleziona_na_serwerze":   role_brojler.name   if role_brojler   else None,
+            "rola_OPIERZONY_znaleziona_na_serwerze": role_opierzony.name if role_opierzony else None,
+            "liczba_wszystkich_rol_na_serwerze": len(guild.roles),
+            "wszystkie_role_BROJLER_na_serwerze": [
+                {"id": r.id, "name": r.name} for r in guild.roles if "BROJLER" in r.name.upper()
+            ],
+            "wszystkie_role_OPIERZONY_na_serwerze": [
+                {"id": r.id, "name": r.name} for r in guild.roles if "OPIERZONY" in r.name.upper()
+            ],
+            "members": [],
+        }
+        try:
+            member_count = 0
+            async for member in guild.fetch_members(limit=None):
+                if member.bot:
+                    continue
+                member_count += 1
+                guild_info["members"].append({
+                    "display_name": member.display_name,
+                    "user_id": str(member.id),
+                    "is_owner": member.id == guild.owner_id,
+                    "wszystkie_role_membera": [{"id": r.id, "name": r.name} for r in member.roles if r.name != "@everyone"],
+                    "ma_role_brojler_wedlug_ID": bool(role_brojler and role_brojler.id in {r.id for r in member.roles}),
+                })
+            guild_info["fetch_members_pobral_osob"] = member_count
+        except Exception as e:
+            guild_info["fetch_members_blad"] = str(e)
+        debug["guilds"].append(guild_info)
+    return _json(debug)
+
 async def api_member_roles(request):
     """Zwraca rangę każdego membera – świeże dane z Discord API, cache 60s."""
     if not _auth(request): return web.Response(status=401)
@@ -726,6 +770,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/role-grants",      api_role_grants)
     app.router.add_get("/api/activity-chart",   api_activity_chart)
     app.router.add_get("/api/member-roles",     api_member_roles)
+    app.router.add_get("/api/debug-roles",      api_debug_roles)
     app.router.add_get("/api/monthly-activity", api_monthly_activity)
     app.router.add_get("/api/weekly-activity",  api_weekly_activity)
     app.router.add_get("/api/records",          api_records)
