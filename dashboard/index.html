@@ -287,7 +287,8 @@ const PAGE_TITLES = { rankings:'Rankingi aktywności', chart:'Wykresy aktywnośc
 
 let currentPeriod = 'week';
 let currentRankData = [];
-let memberRoles = {};
+let memberRolesById = {};   // { user_id: rank } – główne, stabilne źródło
+let memberRolesByName = {}; // { lowercase_name: rank } – fallback gdy brak user_id
 let chartActivity, chartUsers;
 
 // ── Utils ──────────────────────────────────────────────────────────────────
@@ -406,8 +407,9 @@ async function loadRankings(period) {
   }
 }
 
-function getRoleStatus(displayName, secs) {
-  const rank = memberRoles[(displayName || '').toLowerCase()];
+function getRoleStatus(displayName, secs, userId) {
+  const rank = (userId && memberRolesById[String(userId)])
+             || memberRolesByName[(displayName || '').toLowerCase()];
   if (rank === 'BROJLER')   return 'brojler';
   if (rank === 'OPIERZONY') return 'opierzony';
   if (secs >= THRESHOLDS.BROJLER)   return 'brojler';
@@ -426,11 +428,11 @@ function renderRankings(data) {
     const rankCell = i===0
       ? `<span class="rank-num"><i class="ti ti-crown" aria-hidden="true"></i></span>`
       : `<span class="rank-num">${i+1}</span>`;
-    const status = getRoleStatus(r.display_name, secs);
+    const status = getRoleStatus(r.display_name, secs, r.user_id);
     const roleBadge = status === 'brojler'   ? `<span class="role-BROJLER">BROJLER</span>`
                      : status === 'opierzony' ? `<span class="role-OPIERZONY">OPIERZONY</span>`
                      : '';
-    const prog = currentPeriod === 'alltime' ? renderProgress(secs, r.display_name) : '';
+    const prog = currentPeriod === 'alltime' ? renderProgress(secs, r.display_name, r.user_id) : '';
     return `<tr>
       <td>${rankCell}</td>
       <td><div class="row-user"><div class="avatar">${initials(r.display_name||'?')}</div><span>${r.display_name||'–'}</span>${roleBadge}</div></td>
@@ -440,8 +442,8 @@ function renderRankings(data) {
   }).join('');
 }
 
-function renderProgress(secs, displayName) {
-  const status = getRoleStatus(displayName, secs);
+function renderProgress(secs, displayName, userId) {
+  const status = getRoleStatus(displayName, secs, userId);
   if (status === 'brojler') {
     return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-done" style="width:100%"></div></div><div class="prog-label"><i class="ti ti-check" aria-hidden="true"></i> BROJLER</div></div>`;
   }
@@ -677,13 +679,16 @@ async function loadComparisonCharts() {
 async function loadMemberRoles() {
   try {
     const data = await apiFetch('/api/member-roles');
-    memberRoles = {};
-    for (const info of Object.values(data)) {
+    memberRolesById = {};
+    memberRolesByName = {};
+    for (const [userId, info] of Object.entries(data)) {
+      const rank = info.rank || 'PISKLAK';
+      memberRolesById[userId] = rank;
       if (info.display_name) {
-        memberRoles[info.display_name.toLowerCase()] = info.rank || 'PISKLAK';
+        memberRolesByName[info.display_name.toLowerCase()] = rank;
       }
     }
-  } catch(e) { memberRoles = {}; }
+  } catch(e) { memberRolesById = {}; memberRolesByName = {}; }
 }
 
 async function loadMemberRolesThenRankings() {
