@@ -5,85 +5,77 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Voice Tracker Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/dist/tabler-icons.min.css">
 <style>
 :root {
-  --bg:      #0b0d14;
-  --surface: #13151f;
-  --card:    #1a1d2e;
-  --border:  #1e2235;
-  --border2: #2a2f4a;
-  --accent:  #5865f2;
-  --accent2: #57f287;
-  --accent3: #fee75c;
-  --accent4: #eb459e;
-  --text:    #e3e5e8;
-  --muted:   #72767d;
-  --danger:  #ed4245;
+  --bg:      #0e0f14;
+  --surface: #15161d;
+  --card:    #1a1b23;
+  --border:  #24252f;
+  --border2: #2f313d;
+  --accent:  #5b7cfa;
+  --success: #3fb97e;
+  --warning: #d9a441;
+  --text:    #e6e6ea;
+  --muted:   #85868f;
+  --danger:  #e0555a;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; min-height: 100vh; }
 
-.layout { display: grid; grid-template-columns: 210px 1fr; min-height: 100vh; }
+.layout { display: grid; grid-template-columns: 200px 1fr; min-height: 100vh; }
 
 /* ── Sidebar ── */
 .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 0; position: sticky; top: 0; height: 100vh; }
-.logo { padding: 20px 18px; font-size: 15px; font-weight: 600; color: var(--accent); display: flex; align-items: center; gap: 9px; border-bottom: 1px solid var(--border); }
-.logo-icon { font-size: 20px; }
-.nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 8px; flex: 1; }
-.ni { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 13px; transition: all .15s; border: 1px solid transparent; }
+.logo { padding: 18px; font-size: 14px; font-weight: 500; color: var(--text); display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.logo i { font-size: 18px; color: var(--accent); }
+.nav { display: flex; flex-direction: column; gap: 1px; padding: 10px 8px; flex: 1; }
+.ni { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 13px; transition: background .15s, color .15s; }
 .ni:hover { background: var(--card); color: var(--text); }
-.ni.active { background: rgba(88,101,242,.12); color: var(--accent); border-color: rgba(88,101,242,.2); font-weight: 500; }
-.ni .ni-icon { font-size: 17px; width: 20px; text-align: center; }
-.sidebar-foot { padding: 16px 12px; border-top: 1px solid var(--border); }
-.logout-btn { width: 100%; padding: 8px; background: transparent; border: 1px solid var(--border2); color: var(--muted); border-radius: 8px; cursor: pointer; font-size: 12px; transition: all .15s; }
+.ni.active { background: var(--card); color: var(--text); font-weight: 500; }
+.ni i { font-size: 17px; width: 18px; text-align: center; flex-shrink: 0; }
+.sidebar-foot { padding: 14px 12px; border-top: 1px solid var(--border); }
+.logout-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; background: transparent; border: 1px solid var(--border2); color: var(--muted); border-radius: 8px; cursor: pointer; font-size: 12px; transition: all .15s; }
 .logout-btn:hover { border-color: var(--danger); color: var(--danger); }
 
 /* ── Main ── */
 .main { display: flex; flex-direction: column; min-height: 100vh; overflow: hidden; }
-.topbar { padding: 20px 28px 0; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-.topbar-left h1 { font-size: 20px; font-weight: 600; color: #fff; margin-bottom: 2px; }
-.topbar-left p { font-size: 11px; color: var(--muted); }
-.topbar-right { display: flex; align-items: center; gap: 10px; }
+.topbar { padding: 22px 28px 0; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.topbar-left h1 { font-size: 19px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+.topbar-left p { font-size: 12px; color: var(--muted); }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
 .refresh-time { font-size: 11px; color: var(--muted); }
-.refresh-btn { display: flex; align-items: center; gap: 6px; padding: 7px 14px; background: rgba(88,101,242,.12); border: 1px solid rgba(88,101,242,.3); color: var(--accent); border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all .15s; }
-.refresh-btn:hover { background: rgba(88,101,242,.2); }
+.refresh-btn { display: flex; align-items: center; gap: 6px; padding: 7px 14px; background: var(--card); border: 1px solid var(--border2); color: var(--text); border-radius: 8px; cursor: pointer; font-size: 12px; transition: border-color .15s; }
+.refresh-btn:hover { border-color: var(--accent); }
 .refresh-btn.spin i { animation: spin .6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.content { padding: 20px 28px 28px; display: flex; flex-direction: column; gap: 18px; flex: 1; overflow-y: auto; }
+.content { padding: 20px 28px 28px; display: flex; flex-direction: column; gap: 16px; flex: 1; overflow-y: auto; }
 
 /* ── Stat cards ── */
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; position: relative; overflow: hidden; }
-.stat-card::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
-.sc-blue::after  { background: var(--accent); }
-.sc-green::after { background: var(--accent2); }
-.sc-yellow::after{ background: var(--accent3); }
-.sc-pink::after  { background: var(--accent4); }
-.sc-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 7px; }
-.sc-value { font-size: 26px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
-.sc-blue .sc-value  { color: var(--accent); }
-.sc-green .sc-value { color: var(--accent2); }
-.sc-yellow .sc-value{ color: var(--accent3); }
-.sc-pink .sc-value  { color: var(--accent4); }
+.stat-card { background: var(--card); border-radius: 10px; padding: 15px 16px; }
+.sc-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.sc-value { font-size: 22px; font-weight: 500; line-height: 1.2; margin-bottom: 4px; color: var(--text); }
 .sc-sub { font-size: 11px; color: var(--muted); }
 
 /* ── Page panels ── */
 .page { display: none; }
-.page.active { display: flex; flex-direction: column; gap: 18px; }
+.page.active { display: flex; flex-direction: column; gap: 16px; }
 
 /* ── Two-col layout ── */
-.two-col { display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start; }
+.two-col { display: grid; grid-template-columns: 1fr 270px; gap: 14px; align-items: start; }
 
 /* ── Panel ── */
-.panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-.panel-hdr { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.panel-title { font-size: 14px; font-weight: 600; color: #fff; }
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.panel-hdr { padding: 13px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.panel-title { font-size: 13px; font-weight: 500; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.panel-title i { font-size: 15px; color: var(--muted); }
 .panel-actions { display: flex; align-items: center; gap: 8px; }
 .search-box { background: var(--bg); border: 1px solid var(--border2); border-radius: 7px; color: var(--text); font-size: 12px; padding: 6px 10px; outline: none; width: 150px; transition: border-color .15s; }
 .search-box:focus { border-color: var(--accent); }
 .csv-btn { display: flex; align-items: center; gap: 5px; padding: 6px 12px; background: transparent; border: 1px solid var(--border2); color: var(--muted); border-radius: 7px; font-size: 11px; cursor: pointer; transition: all .15s; white-space: nowrap; }
-.csv-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+.csv-btn:hover { border-color: var(--accent); color: var(--text); }
 
 /* ── Tabs ── */
 .tabs { display: flex; gap: 3px; background: var(--bg); padding: 3px; border-radius: 8px; }
@@ -93,68 +85,74 @@ body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', syste
 
 /* ── Table ── */
 table { width: 100%; border-collapse: collapse; }
-th { padding: 9px 18px; text-align: left; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); font-weight: 500; }
-td { padding: 11px 18px; font-size: 13px; border-bottom: 1px solid var(--border); }
+th { padding: 9px 16px; text-align: left; font-size: 11px; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); }
+td { padding: 10px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: rgba(88,101,242,.04); }
-.medal { font-size: 16px; }
-.num-rank { color: var(--muted); font-size: 12px; }
-.time-badge { background: rgba(88,101,242,.15); color: var(--accent); padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; }
-.loading { color: var(--muted); padding: 40px; text-align: center; }
+tr:hover td { background: rgba(255,255,255,.02); }
+.row-user { display: flex; align-items: center; gap: 10px; }
+.avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--border2); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; color: var(--text); flex-shrink: 0; }
+.rank-num { color: var(--muted); font-size: 12px; width: 18px; display: inline-flex; align-items: center; justify-content: center; }
+.rank-num i { font-size: 15px; color: var(--warning); }
+.time-badge { background: var(--bg); color: var(--text); padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; display: inline-block; }
+.loading { color: var(--muted); padding: 36px; text-align: center; }
 
 /* ── Progress bar ── */
-.prog-wrap { display: flex; flex-direction: column; gap: 3px; }
+.prog-wrap { display: flex; flex-direction: column; gap: 4px; }
 .prog-bar { height: 4px; background: var(--border2); border-radius: 2px; overflow: hidden; width: 90px; }
 .prog-fill { height: 100%; border-radius: 2px; }
-.pf-op { background: var(--accent2); }
-.pf-br { background: var(--accent3); }
-.pf-done { background: var(--accent4); }
-.prog-label { font-size: 10px; color: var(--muted); }
+.pf-op { background: var(--muted); }
+.pf-br { background: var(--warning); }
+.pf-done { background: var(--success); }
+.prog-label { font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 3px; }
+.prog-label i { font-size: 11px; color: var(--success); }
 
 /* ── Side panels ── */
-.side-col { display: flex; flex-direction: column; gap: 14px; }
+.side-col { display: flex; flex-direction: column; gap: 12px; }
 
 /* ── Online list ── */
-.online-list { padding: 12px 0; }
-.online-item { display: flex; align-items: center; gap: 9px; padding: 7px 18px; transition: background .15s; }
-.online-item:hover { background: rgba(88,101,242,.04); }
-.online-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent2); flex-shrink: 0; box-shadow: 0 0 6px var(--accent2); animation: pulse 2s infinite; }
-@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.5} }
+.online-list { padding: 10px 0; }
+.online-item { display: flex; align-items: center; gap: 9px; padding: 7px 16px; transition: background .15s; }
+.online-item:hover { background: rgba(255,255,255,.02); }
+.online-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
 .online-info { flex: 1; min-width: 0; }
 .online-name { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.online-ch { font-size: 10px; color: var(--accent); margin-top: 1px; }
+.online-ch { font-size: 10px; color: var(--muted); margin-top: 1px; display: flex; align-items: center; gap: 4px; }
+.online-ch i { font-size: 10px; }
 .online-time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
-.online-empty { padding: 20px 18px; color: var(--muted); font-size: 12px; text-align: center; }
+.online-empty { padding: 20px 16px; color: var(--muted); font-size: 12px; text-align: center; }
 
 /* ── Pie chart ── */
-.pie-body { padding: 16px 18px; }
-
+.pie-body { padding: 14px 16px; }
 
 /* ── Chart ── */
-.chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 12px; position: relative; }
-.chart-title { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 14px; }
-.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 16px 10px; position: relative; }
+.chart-title { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 12px; }
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-/* ── Report / role / inactive tables ── */
-.role-OPIERZONY { background: rgba(87,242,135,.12); color: var(--accent2); padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; }
-.role-BROJLER { background: rgba(254,231,92,.12); color: var(--accent3); padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; }
+/* ── Role badges ── */
+.role-OPIERZONY { background: rgba(217,164,65,.15); color: var(--warning); padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; display: inline-block; }
+.role-BROJLER { background: rgba(63,185,126,.15); color: var(--success); padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; display: inline-block; }
 
 /* ── Toast ── */
-#toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; font-size: 12px; opacity: 0; transform: translateY(8px); transition: all .25s; pointer-events: none; z-index: 999; }
+#toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border2); border-radius: 8px; padding: 11px 16px; font-size: 12px; opacity: 0; transform: translateY(6px); transition: all .25s; pointer-events: none; z-index: 999; display: flex; align-items: center; gap: 8px; }
 #toast.show { opacity: 1; transform: none; }
-#toast.ok  { border-color: var(--accent2); color: var(--accent2); }
+#toast.ok  { border-color: var(--success); color: var(--success); }
 #toast.err { border-color: var(--danger); color: var(--danger); }
 
-.rank-pill { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border2); background: transparent; color: var(--muted); transition: all .15s; white-space: nowrap; }
+/* ── Rank filter pills ── */
+.rank-pill { padding: 4px 11px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border2); background: transparent; color: var(--muted); transition: all .15s; white-space: nowrap; }
 .rank-pill:hover { color: var(--text); }
-.rank-pill.active { background: rgba(88,101,242,.15); border-color: var(--accent); color: var(--accent); }
-.rank-pill[data-rank="BROJLER"].active { background: rgba(254,231,92,.12); border-color: var(--accent3); color: var(--accent3); }
-.rank-pill[data-rank="OPIERZONY"].active { background: rgba(87,242,135,.12); border-color: var(--accent2); color: var(--accent2); }
-.rank-pill[data-rank="PISKLAK"].active { background: rgba(235,69,158,.1); border-color: var(--accent4); color: var(--accent4); }
-.rec-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
-.rec-icon { font-size: 26px; margin-bottom: 8px; }
-.rec-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
-.rec-val { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.rank-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.rank-pill[data-rank="BROJLER"].active { background: var(--success); border-color: var(--success); }
+.rank-pill[data-rank="OPIERZONY"].active { background: var(--warning); border-color: var(--warning); }
+.rank-pill[data-rank="PISKLAK"].active { background: var(--muted); border-color: var(--muted); }
+
+/* ── Record cards ── */
+.rec-card { background: var(--card); border-radius: 10px; padding: 16px; }
+.rec-icon { width: 34px; height: 34px; border-radius: 8px; background: var(--bg); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.rec-icon i { font-size: 17px; color: var(--accent); }
+.rec-lbl { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+.rec-val { font-size: 15px; font-weight: 500; color: var(--text); margin-bottom: 3px; }
 .rec-sub { font-size: 11px; color: var(--muted); }
 
 @media (max-width: 900px) {
@@ -171,17 +169,17 @@ tr:hover td { background: rgba(88,101,242,.04); }
 
 <!-- ── Sidebar ── -->
 <aside class="sidebar">
-  <div class="logo"><span class="logo-icon">🎙️</span> Voice Tracker</div>
+  <div class="logo"><i class="ti ti-microphone" aria-hidden="true"></i> Voice Tracker</div>
   <nav class="nav">
-    <div class="ni active" data-page="rankings"><span class="ni-icon">📊</span> Rankingi</div>
-    <div class="ni" data-page="chart"><span class="ni-icon">📈</span> Wykresy</div>
-    <div class="ni" data-page="reports"><span class="ni-icon">📨</span> Raporty</div>
-    <div class="ni" data-page="roles"><span class="ni-icon">🎖️</span> Rangi</div>
-    <div class="ni" data-page="inactive"><span class="ni-icon">😴</span> Nieaktywni</div>
-    <div class="ni" data-page="records"><span class="ni-icon">🏆</span> Rekordy</div>
+    <div class="ni active" data-page="rankings"><i class="ti ti-chart-bar" aria-hidden="true"></i> Rankingi</div>
+    <div class="ni" data-page="chart"><i class="ti ti-chart-line" aria-hidden="true"></i> Wykresy</div>
+    <div class="ni" data-page="reports"><i class="ti ti-mail" aria-hidden="true"></i> Raporty</div>
+    <div class="ni" data-page="roles"><i class="ti ti-award" aria-hidden="true"></i> Rangi</div>
+    <div class="ni" data-page="inactive"><i class="ti ti-moon" aria-hidden="true"></i> Nieaktywni</div>
+    <div class="ni" data-page="records"><i class="ti ti-trophy" aria-hidden="true"></i> Rekordy</div>
   </nav>
   <div class="sidebar-foot">
-    <button class="logout-btn" onclick="location='/logout'">Wyloguj się</button>
+    <button class="logout-btn" onclick="location='/logout'"><i class="ti ti-logout" aria-hidden="true"></i> Wyloguj się</button>
   </div>
 </aside>
 
@@ -195,7 +193,7 @@ tr:hover td { background: rgba(88,101,242,.04); }
     <div class="topbar-right">
       <span class="refresh-time" id="refresh-time">—</span>
       <button class="refresh-btn" id="refresh-btn" onclick="refreshCurrent()">
-        <span>↺</span> Odśwież
+        <i class="ti ti-refresh" aria-hidden="true"></i> Odśwież
       </button>
     </div>
   </div>
@@ -223,11 +221,11 @@ tr:hover td { background: rgba(88,101,242,.04); }
                 <div class="tab" data-period="month">30 dni</div>
                 <div class="tab" data-period="quarter">Kwartał</div>
                 <div class="tab" data-period="alltime">All time</div>
-                <div class="tab" data-period="special">🎉 Afazja</div>
+                <div class="tab" data-period="special">Afazja</div>
               </div>
               <div class="panel-actions">
                 <input class="search-box" id="search-box" placeholder="Szukaj..." oninput="filterRankings()">
-                <button class="csv-btn" onclick="exportCSV()">⬇ CSV</button>
+                <button class="csv-btn" onclick="exportCSV()"><i class="ti ti-download" aria-hidden="true"></i> CSV</button>
               </div>
             </div>
             <table>
@@ -240,13 +238,13 @@ tr:hover td { background: rgba(88,101,242,.04); }
         <div class="side-col">
           <!-- Online teraz -->
           <div class="panel">
-            <div class="panel-hdr"><span class="panel-title">🔊 Online teraz</span><span id="online-count" style="font-size:11px;color:var(--muted)"></span></div>
+            <div class="panel-hdr"><span class="panel-title"><i class="ti ti-headphones" aria-hidden="true"></i> Online teraz</span><span id="online-count" style="font-size:11px;color:var(--muted)"></span></div>
             <div id="online-list" class="online-list"><div class="online-empty">Ładowanie...</div></div>
           </div>
 
           <!-- Wykres kołowy -->
           <div class="panel">
-            <div class="panel-hdr"><span class="panel-title">📊 Udział top 5</span></div>
+            <div class="panel-hdr"><span class="panel-title"><i class="ti ti-chart-pie" aria-hidden="true"></i> Udział top 5</span></div>
             <div class="pie-body">
               <div style="position:relative;height:200px"><canvas id="pieChart"></canvas></div>
             </div>
@@ -267,7 +265,7 @@ tr:hover td { background: rgba(88,101,242,.04); }
           <div style="position:relative;height:200px"><canvas id="usersChart"></canvas></div>
         </div>
       </div>
-      <div class="charts-grid" style="margin-top:16px">
+      <div class="charts-grid" style="margin-top:14px">
         <div class="chart-wrap">
           <div class="chart-title">Aktywność miesięczna – ostatni rok (godziny)</div>
           <div style="position:relative;height:200px"><canvas id="monthlyChart"></canvas></div>
@@ -282,7 +280,7 @@ tr:hover td { background: rgba(88,101,242,.04); }
     <!-- ── Raporty ── -->
     <div class="page" id="page-reports">
       <div class="panel">
-        <div class="panel-hdr"><span class="panel-title">Historia automatycznych raportów</span></div>
+        <div class="panel-hdr"><span class="panel-title"><i class="ti ti-mail" aria-hidden="true"></i> Historia automatycznych raportów</span></div>
         <table>
           <thead><tr><th>Typ</th><th>Data wysłania</th><th>Liczba wpisów</th></tr></thead>
           <tbody id="reports-body"><tr><td colspan="3" class="loading">Ładowanie...</td></tr></tbody>
@@ -294,7 +292,7 @@ tr:hover td { background: rgba(88,101,242,.04); }
     <div class="page" id="page-roles">
       <div class="stat-grid" id="roles-cards"></div>
       <div class="panel">
-        <div class="panel-hdr"><span class="panel-title">Historia nadanych rang</span></div>
+        <div class="panel-hdr"><span class="panel-title"><i class="ti ti-award" aria-hidden="true"></i> Historia nadanych rang</span></div>
         <table>
           <thead><tr><th>Użytkownik</th><th>Ranga</th><th>Czas w momencie nadania</th><th>Data</th></tr></thead>
           <tbody id="roles-body"><tr><td colspan="4" class="loading">Ładowanie...</td></tr></tbody>
@@ -305,11 +303,11 @@ tr:hover td { background: rgba(88,101,242,.04); }
     <!-- ── Rekordy ── -->
     <div class="page" id="page-records">
       <div class="stat-grid" id="records-stat-grid" style="grid-template-columns:repeat(3,1fr)"></div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px" id="records-grid"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px" id="records-grid"></div>
 
-      <div class="panel" style="margin-top:18px">
+      <div class="panel" style="margin-top:16px">
         <div class="panel-hdr">
-          <span class="panel-title">⚠️ Ranga bez aktywności (30+ dni)</span>
+          <span class="panel-title"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Ranga bez aktywności (30+ dni)</span>
           <span style="font-size:11px;color:var(--muted)" id="stale-count"></span>
         </div>
         <table>
@@ -323,7 +321,7 @@ tr:hover td { background: rgba(88,101,242,.04); }
     <div class="page" id="page-inactive">
       <div class="stat-grid" id="inactive-cards"></div>
       <div class="panel">
-        <div class="panel-hdr"><span class="panel-title">Osoby które nigdy nie były na kanale głosowym</span></div>
+        <div class="panel-hdr"><span class="panel-title"><i class="ti ti-moon" aria-hidden="true"></i> Osoby które nigdy nie były na kanale głosowym</span></div>
         <table>
           <thead><tr><th>#</th><th>Użytkownik</th><th>Na serwerze od</th></tr></thead>
           <tbody id="inactive-body"><tr><td colspan="3" class="loading">Ładowanie...</td></tr></tbody>
@@ -339,10 +337,9 @@ tr:hover td { background: rgba(88,101,242,.04); }
 
 <script>
 const THRESHOLDS = { OPIERZONY: 48 * 3600, BROJLER: 96 * 3600 };
-const MEDALS = ['🥇','🥈','🥉'];
 const PERIOD_LABELS = { week:'7 dni', month:'30 dni', quarter:'Kwartał', alltime:'All time', special:'Afazja' };
 const PAGE_TITLES = { rankings:'Rankingi aktywności', chart:'Wykresy aktywności', reports:'Historia raportów', roles:'Przyznane rangi', inactive:'Nieaktywni członkowie', records:'Rekordy serwera' };
-const PIE_COLORS = ['#5865f2','#57f287','#fee75c','#eb459e','#f97316'];
+const PIE_COLORS = ['#5b7cfa','#3fb97e','#d9a441','#c95b7a','#7a7a85'];
 
 let currentPeriod = 'week';
 let currentRankData = [];
@@ -379,7 +376,8 @@ function initials(name) {
 
 function toast(msg, ok=true) {
   const el = document.getElementById('toast');
-  el.textContent = msg;
+  const icon = ok ? 'ti-check' : 'ti-alert-circle';
+  el.innerHTML = `<i class="ti ${icon}" aria-hidden="true"></i> ${msg}`;
   el.className = 'show ' + (ok?'ok':'err');
   clearTimeout(el._t);
   el._t = setTimeout(()=>el.className='', 3200);
@@ -431,7 +429,7 @@ function refreshCurrent() {
   setRefreshTime();
 }
 
-loadPage('rankings');
+loadMemberRolesThenRankings();
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 
@@ -469,7 +467,6 @@ function getRoleStatus(displayName, secs) {
   const rank = memberRoles[(displayName || '').toLowerCase()];
   if (rank === 'BROJLER')   return 'brojler';
   if (rank === 'OPIERZONY') return 'opierzony';
-  // Fallback: przelicz z czasu
   if (secs >= THRESHOLDS.BROJLER)   return 'brojler';
   if (secs >= THRESHOLDS.OPIERZONY) return 'opierzony';
   return 'pisklak';
@@ -483,11 +480,13 @@ function renderRankings(data) {
   }
   tbody.innerHTML = data.map((r,i) => {
     const secs = parseInt(r.total_seconds)||0;
-    const medal = i<3 ? `<span class="medal">${MEDALS[i]}</span>` : `<span class="num-rank">${i+1}.</span>`;
+    const rankCell = i===0
+      ? `<span class="rank-num"><i class="ti ti-crown" aria-hidden="true"></i></span>`
+      : `<span class="rank-num">${i+1}</span>`;
     const prog = renderProgress(secs, r.display_name);
     return `<tr>
-      <td>${medal}</td>
-      <td>${r.display_name||'–'}</td>
+      <td>${rankCell}</td>
+      <td><div class="row-user"><div class="avatar">${initials(r.display_name||'?')}</div>${r.display_name||'–'}</div></td>
       <td><span class="time-badge">${fmtTime(secs)}</span></td>
       <td>${prog}</td>
     </tr>`;
@@ -497,12 +496,12 @@ function renderRankings(data) {
 function renderProgress(secs, displayName) {
   const status = getRoleStatus(displayName, secs);
   if (status === 'brojler') {
-    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-done" style="width:100%"></div></div><div class="prog-label">BROJLER ✓</div></div>`;
+    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-done" style="width:100%"></div></div><div class="prog-label"><i class="ti ti-check" aria-hidden="true"></i> BROJLER</div></div>`;
   }
   if (status === 'opierzony') {
     const pct = Math.min(100, Math.round((secs/THRESHOLDS.BROJLER)*100));
     const rem = fmtTime(Math.max(0, THRESHOLDS.BROJLER - secs));
-    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-br" style="width:${pct}%"></div></div><div class="prog-label">OPIERZONY ✓${secs < THRESHOLDS.BROJLER ? ' · '+rem+' do BROJLER' : ''}</div></div>`;
+    return `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill pf-br" style="width:${pct}%"></div></div><div class="prog-label">${secs < THRESHOLDS.BROJLER ? rem+' do BROJLER' : 'BROJLER'}</div></div>`;
   }
   const pct = Math.min(100, Math.round((secs/THRESHOLDS.OPIERZONY)*100));
   const rem = fmtTime(Math.max(0, THRESHOLDS.OPIERZONY - secs));
@@ -512,10 +511,10 @@ function renderProgress(secs, displayName) {
 function renderStatCards(data) {
   const total = data.reduce((a,r)=>a+parseInt(r.total_seconds||0),0);
   document.getElementById('stat-grid').innerHTML = `
-    <div class="stat-card sc-blue"><div class="sc-label">Łącznie osób</div><div class="sc-value">${data.length}</div><div class="sc-sub">aktywnych w tym okresie</div></div>
-    <div class="stat-card sc-green"><div class="sc-label">Lider</div><div class="sc-value" style="font-size:17px;line-height:1.4">${data[0]?.display_name||'–'}</div><div class="sc-sub">${fmtTime(data[0]?.total_seconds||0)} łącznie</div></div>
-    <div class="stat-card sc-yellow"><div class="sc-label">Łączny czas</div><div class="sc-value">${fmtTime(total)}</div><div class="sc-sub">wszystkich członków</div></div>
-    <div class="stat-card sc-pink" id="sc-online"><div class="sc-label">Online teraz</div><div class="sc-value">—</div><div class="sc-sub">na kanałach głosowych</div></div>
+    <div class="stat-card"><div class="sc-label">Łącznie osób</div><div class="sc-value">${data.length}</div><div class="sc-sub">aktywnych w tym okresie</div></div>
+    <div class="stat-card"><div class="sc-label">Lider</div><div class="sc-value" style="font-size:17px;line-height:1.4">${data[0]?.display_name||'–'}</div><div class="sc-sub">${fmtTime(data[0]?.total_seconds||0)} łącznie</div></div>
+    <div class="stat-card"><div class="sc-label">Łączny czas</div><div class="sc-value">${fmtTime(total)}</div><div class="sc-sub">wszystkich członków</div></div>
+    <div class="stat-card" id="sc-online"><div class="sc-label">Online teraz</div><div class="sc-value">—</div><div class="sc-sub">na kanałach głosowych</div></div>
   `;
 }
 
@@ -534,10 +533,8 @@ function exportCSV() {
   a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
   a.download = `ranking-${PERIOD_LABELS[currentPeriod]||currentPeriod}-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
-  toast('Plik CSV pobrany ✓');
+  toast('Plik CSV pobrany');
 }
-
-
 
 // ── Online teraz ───────────────────────────────────────────────────────────
 
@@ -550,14 +547,14 @@ async function loadOnline() {
     if (sc) sc.innerHTML = `<div class="sc-label">Online teraz</div><div class="sc-value">${count}</div><div class="sc-sub">na kanałach głosowych</div>`;
     document.getElementById('online-count').textContent = `${count} os.`;
     if (!count) {
-      el.innerHTML = '<div class="online-empty">Nikt nie jest teraz na voice 🔇</div>'; return;
+      el.innerHTML = '<div class="online-empty">Nikt nie jest teraz na voice</div>'; return;
     }
     el.innerHTML = data.map(r=>`
       <div class="online-item">
         <div class="online-dot"></div>
         <div class="online-info">
           <div class="online-name">${r.display_name}</div>
-          <div class="online-ch">#${r.channel_name}${r.is_special?' 🎉':''}</div>
+          <div class="online-ch">${r.is_special?'<i class="ti ti-sparkles" aria-hidden="true"></i> ':''}#${r.channel_name}</div>
         </div>
         <div class="online-time">${fmtOnline(r.elapsed_s)}</div>
       </div>`).join('');
@@ -581,17 +578,17 @@ function renderPie(data) {
   const labels = top5.map(r=>r.display_name||'–');
   const values = top5.map(r=>+(parseInt(r.total_seconds||0)/3600).toFixed(1));
   const rest = Math.max(0, totalAll - top5.reduce((a,r)=>a+parseInt(r.total_seconds||0),0));
-  if (rest > 0) { labels.push('Pozostali'); values.push(+(rest/3600).toFixed(1)); PIE_COLORS[5]='#888787'; }
+  if (rest > 0) { labels.push('Pozostali'); values.push(+(rest/3600).toFixed(1)); PIE_COLORS[5]='#4a4a52'; }
 
   if (pieChart) pieChart.destroy();
   const ctx = document.getElementById('pieChart').getContext('2d');
   pieChart = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels, datasets: [{ data: values, backgroundColor: PIE_COLORS.slice(0,labels.length), borderWidth: 2, borderColor: '#1a1d2e' }] },
+    data: { labels, datasets: [{ data: values, backgroundColor: PIE_COLORS.slice(0,labels.length), borderWidth: 2, borderColor: '#1a1b23' }] },
     options: {
       responsive: true,
       plugins: {
-        legend: { position: 'bottom', labels: { color: '#72767d', font: { size: 11 }, padding: 12, boxWidth: 10 } },
+        legend: { position: 'bottom', labels: { color: '#85868f', font: { size: 11 }, padding: 12, boxWidth: 10 } },
         tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.raw}h` } }
       },
       cutout: '60%'
@@ -611,13 +608,13 @@ async function loadCharts() {
       type: 'bar',
       data: { labels, datasets: [{ label, data: d, backgroundColor: color+'33', borderColor: color, borderWidth: 2, borderRadius: 4 }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-        scales: { x: { ticks: { color:'#72767d', font:{size:10} }, grid: { color:'#1e2235' } },
-                  y: { ticks: { color:'#72767d', font:{size:10} }, grid: { color:'#1e2235' } } } }
+        scales: { x: { ticks: { color:'#85868f', font:{size:10} }, grid: { color:'#24252f' } },
+                  y: { ticks: { color:'#85868f', font:{size:10} }, grid: { color:'#24252f' } } } }
     });
     if (chartActivity) chartActivity.destroy();
     if (chartUsers) chartUsers.destroy();
-    chartActivity = new Chart(document.getElementById('activityChart'), chartCfg('Godziny','#5865f2',hours));
-    chartUsers    = new Chart(document.getElementById('usersChart'), chartCfg('Użytkownicy','#57f287',users));
+    chartActivity = new Chart(document.getElementById('activityChart'), chartCfg('Godziny','#5b7cfa',hours));
+    chartUsers    = new Chart(document.getElementById('usersChart'), chartCfg('Użytkownicy','#3fb97e',users));
   } catch(e) { toast('Błąd ładowania wykresów', false); }
 }
 
@@ -625,7 +622,7 @@ async function loadCharts() {
 
 async function loadReports() {
   const tbody = document.getElementById('reports-body');
-  const LABELS = { monthly:'📆 Miesięczny', quarterly:'📊 Kwartalny' };
+  const LABELS = { monthly:'Miesięczny', quarterly:'Kwartalny' };
   try {
     const data = await apiFetch('/api/reports');
     if (!data.length) { tbody.innerHTML='<tr><td colspan="3" class="loading">Brak historii raportów.</td></tr>'; return; }
@@ -646,7 +643,7 @@ async function loadRoles() {
     const counts = {};
     data.forEach(r=>counts[r.role_name]=(counts[r.role_name]||0)+1);
     document.getElementById('roles-cards').innerHTML = Object.entries(counts).map(([name,cnt])=>`
-      <div class="stat-card sc-yellow">
+      <div class="stat-card">
         <div class="sc-label">Nadano rangę</div>
         <div class="sc-value" style="font-size:18px">${name}</div>
         <div class="sc-sub">${cnt} razy łącznie</div>
@@ -668,8 +665,8 @@ async function loadInactive() {
   try {
     const data = await apiFetch('/api/inactive');
     document.getElementById('inactive-cards').innerHTML = `
-      <div class="stat-card sc-pink"><div class="sc-label">Nieaktywnych</div><div class="sc-value">${data.length}</div><div class="sc-sub">nigdy nie byli na voice</div></div>`;
-    if (!data.length) { tbody.innerHTML='<tr><td colspan="3" class="loading">Wszyscy członkowie byli aktywni! 🎉</td></tr>'; return; }
+      <div class="stat-card"><div class="sc-label">Nieaktywnych</div><div class="sc-value">${data.length}</div><div class="sc-sub">nigdy nie byli na voice</div></div>`;
+    if (!data.length) { tbody.innerHTML='<tr><td colspan="3" class="loading">Wszyscy członkowie byli aktywni!</td></tr>'; return; }
     tbody.innerHTML = data.map((r,i)=>`<tr>
       <td style="color:var(--muted)">${i+1}.</td>
       <td>${r.display_name}</td>
@@ -706,22 +703,22 @@ async function loadServerStats() {
     const d = await apiFetch('/api/server-stats');
     const best = d.best_day;
     document.getElementById('server-stat-grid').innerHTML = `
-      <div class="stat-card sc-blue">
+      <div class="stat-card">
         <div class="sc-label">Łączny czas serwera</div>
         <div class="sc-value">${fmtTime(d.total_seconds)}</div>
         <div class="sc-sub">wszyscy członkowie</div>
       </div>
-      <div class="stat-card sc-green">
+      <div class="stat-card">
         <div class="sc-label">Średnia na osobę</div>
         <div class="sc-value" style="font-size:18px">${fmtTime(d.avg_seconds_per_user)}</div>
         <div class="sc-sub">z ${d.total_users} aktywnych</div>
       </div>
-      <div class="stat-card sc-yellow">
+      <div class="stat-card">
         <div class="sc-label">Rekord dobowy</div>
         <div class="sc-value" style="font-size:18px">${best ? fmtTime(best.total_seconds) : '–'}</div>
         <div class="sc-sub">${best ? new Date(best.day).toLocaleDateString('pl-PL') : ''}</div>
       </div>
-      <div class="stat-card sc-pink">
+      <div class="stat-card">
         <div class="sc-label">Najaktywniejszy dzień</div>
         <div class="sc-value" style="font-size:18px">${d.most_active_dow}</div>
         <div class="sc-sub">historycznie</div>
@@ -736,19 +733,19 @@ async function loadRecords() {
   try {
     const d = await apiFetch('/api/records');
     const card = (icon, label, val, sub) =>
-      `<div class="rec-card"><div class="rec-icon">${icon}</div><div class="rec-lbl">${label}</div><div class="rec-val">${val}</div><div class="rec-sub">${sub}</div></div>`;
+      `<div class="rec-card"><div class="rec-icon"><i class="ti ${icon}" aria-hidden="true"></i></div><div class="rec-lbl">${label}</div><div class="rec-val">${val}</div><div class="rec-sub">${sub}</div></div>`;
     document.getElementById('records-grid').innerHTML = [
-      card('🏆', 'Najwięcej godzin ogółem', d.leader?.display_name||'–', d.leader ? fmtTime(d.leader.total_seconds)+' łącznie' : ''),
-      card('⚡', 'Najdłuższa pojedyncza sesja', d.longest_session?.display_name||'–', d.longest_session ? fmtTime(d.longest_session.duration_s) : ''),
-      card('🎉', 'Król Afazji', d.afazja_leader?.display_name||'–', d.afazja_leader ? fmtTime(d.afazja_leader.total_seconds)+' na Afazji' : ''),
-      card('📅', 'Rekordowy dzień serwera', d.best_day ? fmtTime(d.best_day.total_seconds) : '–', d.best_day ? new Date(d.best_day.day).toLocaleDateString('pl-PL') : ''),
-      card('🔥', 'Rekordowy tydzień serwera', d.best_week ? fmtTime(d.best_week.total_seconds) : '–', d.best_week ? 'od '+new Date(d.best_week.week).toLocaleDateString('pl-PL') : ''),
-      card('🐣', 'Ostatni awans rangi', d.last_grant?.display_name||'–', d.last_grant ? d.last_grant.role_name+' · '+new Date(d.last_grant.granted_at).toLocaleDateString('pl-PL') : ''),
+      card('ti-trophy', 'Najwięcej godzin ogółem', d.leader?.display_name||'–', d.leader ? fmtTime(d.leader.total_seconds)+' łącznie' : ''),
+      card('ti-bolt', 'Najdłuższa pojedyncza sesja', d.longest_session?.display_name||'–', d.longest_session ? fmtTime(d.longest_session.duration_s) : ''),
+      card('ti-confetti', 'Król Afazji', d.afazja_leader?.display_name||'–', d.afazja_leader ? fmtTime(d.afazja_leader.total_seconds)+' na Afazji' : ''),
+      card('ti-calendar', 'Rekordowy dzień serwera', d.best_day ? fmtTime(d.best_day.total_seconds) : '–', d.best_day ? new Date(d.best_day.day).toLocaleDateString('pl-PL') : ''),
+      card('ti-flame', 'Rekordowy tydzień serwera', d.best_week ? fmtTime(d.best_week.total_seconds) : '–', d.best_week ? 'od '+new Date(d.best_week.week).toLocaleDateString('pl-PL') : ''),
+      card('ti-egg', 'Ostatni awans rangi', d.last_grant?.display_name||'–', d.last_grant ? d.last_grant.role_name+' · '+new Date(d.last_grant.granted_at).toLocaleDateString('pl-PL') : ''),
     ].join('');
     document.getElementById('records-stat-grid').innerHTML = `
-      <div class="stat-card sc-blue"><div class="sc-label">Lider wszechczasów</div><div class="sc-value" style="font-size:18px">${d.leader?.display_name||'–'}</div><div class="sc-sub">${d.leader?fmtTime(d.leader.total_seconds):''}</div></div>
-      <div class="stat-card sc-yellow"><div class="sc-label">Najdłuższa sesja</div><div class="sc-value" style="font-size:18px">${d.longest_session?fmtTime(d.longest_session.duration_s):'–'}</div><div class="sc-sub">${d.longest_session?.display_name||''}</div></div>
-      <div class="stat-card sc-pink"><div class="sc-label">Rekord dobowy</div><div class="sc-value" style="font-size:18px">${d.best_day?fmtTime(d.best_day.total_seconds):'–'}</div><div class="sc-sub">${d.best_day?new Date(d.best_day.day).toLocaleDateString('pl-PL'):''}</div></div>
+      <div class="stat-card"><div class="sc-label">Lider wszechczasów</div><div class="sc-value" style="font-size:18px">${d.leader?.display_name||'–'}</div><div class="sc-sub">${d.leader?fmtTime(d.leader.total_seconds):''}</div></div>
+      <div class="stat-card"><div class="sc-label">Najdłuższa sesja</div><div class="sc-value" style="font-size:18px">${d.longest_session?fmtTime(d.longest_session.duration_s):'–'}</div><div class="sc-sub">${d.longest_session?.display_name||''}</div></div>
+      <div class="stat-card"><div class="sc-label">Rekord dobowy</div><div class="sc-value" style="font-size:18px">${d.best_day?fmtTime(d.best_day.total_seconds):'–'}</div><div class="sc-sub">${d.best_day?new Date(d.best_day.day).toLocaleDateString('pl-PL'):''}</div></div>
     `;
   } catch(e) { console.error('records', e); }
 }
@@ -761,7 +758,7 @@ async function loadStaleRanked() {
     const data = await apiFetch('/api/stale-ranked');
     document.getElementById('stale-count').textContent = data.length ? `${data.length} os.` : '';
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="loading">Wszyscy z rangą są aktywni! 🎉</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="loading">Wszyscy z rangą są aktywni!</td></tr>';
       return;
     }
     tbody.innerHTML = data.map(r => {
@@ -772,7 +769,7 @@ async function loadStaleRanked() {
         <td>${r.display_name}</td>
         <td><span class="${badgeClass}">${r.rank}</span></td>
         <td style="color:var(--muted);font-size:12px">${lastSeen}</td>
-        <td style="color:var(--accent4);font-weight:600">${daysText}</td>
+        <td style="color:var(--text);font-weight:500">${daysText}</td>
       </tr>`;
     }).join('');
   } catch(e) {
@@ -788,19 +785,19 @@ let chartMonthly, chartWeekly;
 async function loadComparisonCharts() {
   try {
     const [monthly, weekly] = await Promise.all([apiFetch('/api/monthly-activity'), apiFetch('/api/weekly-activity')]);
-    const gridColor = 'rgba(46,51,84,.7)', tickColor = '#72767d';
+    const gridColor = '#24252f', tickColor = '#85868f';
     const MONTHS = ['Sty','Lut','Mar','Kwi','Maj','Cze','Lip','Sie','Wrz','Paź','Lis','Gru'];
     const mLabels = monthly.map(r => MONTHS[parseInt(r.month.split('-')[1])-1]);
     const mData   = monthly.map(r => +((parseInt(r.total_seconds)||0)/3600).toFixed(1));
     if (chartMonthly) chartMonthly.destroy();
     chartMonthly = new Chart(document.getElementById('monthlyChart'), {
       type: 'line',
-      data: { labels: mLabels, datasets: [{ label:'Godziny', data: mData, borderColor:'#5865f2', borderWidth:2, pointBackgroundColor:'#5865f2', pointRadius:4, tension:0.4, fill:true, backgroundColor:'rgba(88,101,242,0.10)' }] },
+      data: { labels: mLabels, datasets: [{ label:'Godziny', data: mData, borderColor:'#5b7cfa', borderWidth:2, pointBackgroundColor:'#5b7cfa', pointRadius:4, tension:0.4, fill:true, backgroundColor:'rgba(91,124,250,0.10)' }] },
       options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ticks:{color:tickColor,font:{size:10}},grid:{color:gridColor}}, y:{ticks:{color:tickColor,font:{size:10}},grid:{color:gridColor},beginAtZero:true} } }
     });
     const wLabels = weekly.map((_, i) => i === weekly.length-1 ? 'Ten tydz.' : `T-${weekly.length-1-i}`);
     const wData   = weekly.map(r => +((parseInt(r.total_seconds)||0)/3600).toFixed(1));
-    const wColors = wData.map((_,i) => i===wData.length-1 ? '#57f287' : 'rgba(87,242,135,0.35)');
+    const wColors = wData.map((_,i) => i===wData.length-1 ? '#3fb97e' : 'rgba(63,185,126,0.35)');
     if (chartWeekly) chartWeekly.destroy();
     chartWeekly = new Chart(document.getElementById('weeklyChart'), {
       type: 'bar',
@@ -810,7 +807,7 @@ async function loadComparisonCharts() {
   } catch(e) { console.error('comparison charts', e); }
 }
 
-// ── loadMemberRoles (zastąp istniejącą) ───────────────────────────────────
+// ── Role członków ─────────────────────────────────────────────────────────
 
 async function loadMemberRoles() {
   try {
@@ -831,5 +828,6 @@ async function loadMemberRolesThenRankings() {
   loadOnline();
   startOnlineTimer();
 }
-
 </script>
+</body>
+</html>
