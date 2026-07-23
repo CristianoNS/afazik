@@ -467,13 +467,9 @@ async def _send_quarterly_report():
     await db.log_report("quarterly", len(rows))
 
 async def _get_long_inactive_members(guild: discord.Guild, min_days: int) -> list[dict]:
-    """Osoby, które BYŁY aktywne na kanałach głosowych, ale od co najmniej
-    min_days dni się nie pojawiły.
-
-    Celowo NIE zawiera osób które nigdy w ogóle nie były aktywne – ta grupa
-    ma osobną, pełną listę na dashboardzie (zakładka Nieaktywni) i nie
-    powinna się tu duplikować. Ten raport ma pokazywać kto "ucichł",
-    nie kto nigdy się nie pojawił.
+    """Osoby nieaktywne od co najmniej min_days dni – w tym osoby, które
+    nigdy w ogóle nie były aktywne na kanałach głosowych (traktowane jako
+    najdłuższy możliwy okres nieaktywności, sortowane na górze listy).
     """
     last_activity = await _get_last_activity_cached()
     now = datetime.now(timezone.utc)
@@ -483,15 +479,16 @@ async def _get_long_inactive_members(guild: discord.Guild, min_days: int) -> lis
             continue
         last_seen = last_activity.get(str(member.id))
         if last_seen is None:
-            continue  # nigdy nieaktywny – pomijamy, to lista dashboardu, nie tego raportu
-        days_inactive = (now - last_seen).days
-        if days_inactive >= min_days:
+            days_inactive = None  # nigdy nieaktywny
+        else:
+            days_inactive = (now - last_seen).days
+        if days_inactive is None or days_inactive >= min_days:
             result.append({
                 "display_name": member.display_name,
                 "user_id": str(member.id),
                 "days_inactive": days_inactive,
             })
-    result.sort(key=lambda r: r["days_inactive"], reverse=True)
+    result.sort(key=lambda r: (r["days_inactive"] is None, r["days_inactive"] or 0), reverse=True)
     return result
 
 async def _get_inactive_members() -> list[discord.Member]:
