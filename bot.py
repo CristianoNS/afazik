@@ -617,6 +617,31 @@ async def stats_user(ctx, *, member: discord.Member = None):
     embed  = fmt.build_user_embed(rows, target.display_name)
     await ctx.send(embed=embed)
 
+@bot.command(name="test-raport")
+@commands.has_permissions(administrator=True)
+async def test_raport(ctx, typ: str = None):
+    """Wysyła raport miesięczny i/lub kwartalny natychmiast, na kanał REPORT_CHANNEL_ID.
+    Użycie: !test-raport miesiac | !test-raport kwartal | !test-raport (oba)
+    """
+    if REPORT_CHANNEL_ID == 0:
+        await ctx.send("❌ `REPORT_CHANNEL_ID` nie jest skonfigurowany w Railway.")
+        return
+
+    typ = (typ or "").lower()
+    if typ in ("miesiac", "miesiąc", "monthly"):
+        await ctx.send("⏳ Generuję raport miesięczny...")
+        await _send_monthly_report()
+        await ctx.send("✅ Wysłano raport miesięczny.")
+    elif typ in ("kwartal", "kwartał", "quarterly"):
+        await ctx.send("⏳ Generuję raport kwartalny...")
+        await _send_quarterly_report()
+        await ctx.send("✅ Wysłano raport kwartalny.")
+    else:
+        await ctx.send("⏳ Generuję oba raporty (miesięczny + kwartalny)...")
+        await _send_monthly_report()
+        await _send_quarterly_report()
+        await ctx.send("✅ Wysłano oba raporty.")
+
 @bot.command(name="pomoc", aliases=["help"])
 @has_stats_role()
 async def help_cmd(ctx):
@@ -629,6 +654,7 @@ async def help_cmd(ctx):
         ("!czas-afazja",      "Kanał Afazja – Pt/Sb 20:00–06:00"),
         ("!czas-kto [@nick]", "Statystyki konkretnej osoby"),
         ("!pomoc",            "Ta wiadomość"),
+        ("!test-raport [miesiac|kwartal]", "Wyślij raport od razu (admin)"),
     ]
     for name, desc in cmds:
         embed.add_field(name=name, value=desc, inline=False)
