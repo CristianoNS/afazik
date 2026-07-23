@@ -116,7 +116,8 @@ class StatsFormatter:
                 if mode == "active":
                     val = _fmt_time(int(e["total_seconds"]))
                 else:
-                    val = f"{e['days_inactive']} dni"
+                    di = e["days_inactive"]
+                    val = "nigdy nie był/a aktywny/a" if di is None else f"{di} dni"
                 lines.append(f"{i}. **{e['display_name']}** {rank_tag} – {val}")
             embed.description = "\n".join(lines)
 
