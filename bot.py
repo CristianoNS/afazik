@@ -7,7 +7,7 @@ import json
 import secrets
 import time
 import hmac
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 from database import Database
@@ -81,6 +81,7 @@ def has_stats_role():
 @bot.event
 async def on_ready():
     print(f"✅  Zalogowano jako {bot.user} ({bot.user.id})")
+    bot.add_dynamic_items(ReportButton)  # przyciski raportów – przeżywają restart bota
     if not os.getenv("DASHBOARD_SECRET"):
         print("⚠️  UWAGA: zmienna DASHBOARD_SECRET nie jest ustawiona w Railway! "
               "Bot wygenerował losowy klucz, który zmieni się przy każdym restarcie "
@@ -340,78 +341,129 @@ async def _get_report_channel():
         return None
     return bot.get_channel(REPORT_CHANNEL_ID)
 
+MONTH_PL = ["","Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec",
+            "Lipiec","Sierpień","Wrzesień","Październik","Listopad","Grudzień"]
+REPORT_PAGE_SIZE   = 10
+LONG_INACTIVE_DAYS = 60  # co najmniej 2 miesiące
+
+def _period_label(end_ts: datetime, monthly: bool) -> str:
+    """Wyznacza etykietę okresu ("Lipiec 2026" / "Q3 2026") wyłącznie na
+    podstawie end_ts – dzięki temu przycisk kliknięty tygodnie później
+    odtwarza dokładnie tę samą etykietę bez potrzeby jej zapisywania."""
+    local_end = end_ts.astimezone(LOCAL_TZ)
+    if monthly:
+        return f"{MONTH_PL[local_end.month]} {local_end.year}"
+    q = (local_end.month - 1) // 3 + 1
+    return f"Q{q} {local_end.year}"
+
+async def _get_ranks_map() -> dict:
+    """{user_id_str: 'BROJLER'|'OPIERZONY'|'PISKLAK'} – do odznak w raportach."""
+    ranked = await _get_all_members_ranked()
+    return {uid: info["rank"] for uid, info in ranked.items()}
+
+async def _build_report_content(start_ts: datetime, end_ts: datetime, mode: str, page: int, monthly: bool):
+    """Buduje (embed, view) dla danej strony raportu – wywoływane zarówno
+    przy pierwszym wysłaniu jak i przy każdym kliknięciu przycisku."""
+    guild = _get_main_guild()
+    ranks = await _get_ranks_map() if guild else {}
+    label = _period_label(end_ts, monthly)
+    color = discord.Color.green() if monthly else discord.Color.orange()
+
+    if mode == "summary":
+        summary = await db.get_period_summary(start_ts, end_ts)
+        title = f"📆 Raport miesięczny – {label}" if monthly else f"📊 Raport kwartalny – {label}"
+        embed = fmt.build_summary_embed(title, summary, color)
+        view  = _build_report_view(start_ts, end_ts, monthly, "summary", 0, 1)
+        return embed, view
+
+    if mode == "active":
+        entries = await db.get_stats_range(start_ts, end_ts)
+        embed, total_pages, page = fmt.build_list_embed(
+            f"Aktywni – {label}", entries, page, REPORT_PAGE_SIZE, ranks, "active", color)
+        view = _build_report_view(start_ts, end_ts, monthly, "active", page, total_pages)
+        return embed, view
+
+    # mode == "inactive"
+    entries = await _get_long_inactive_members(guild, LONG_INACTIVE_DAYS) if guild else []
+    embed, total_pages, page = fmt.build_list_embed(
+        f"Nieaktywni {LONG_INACTIVE_DAYS}+ dni – {label}", entries, page, REPORT_PAGE_SIZE, ranks, "inactive",
+        discord.Color.red())
+    view = _build_report_view(start_ts, end_ts, monthly, "inactive", page, total_pages)
+    return embed, view
+
+def _build_report_view(start_ts: datetime, end_ts: datetime, monthly: bool, mode: str, page: int, total_pages: int):
+    start_epoch = int(start_ts.timestamp())
+    end_epoch   = int(end_ts.timestamp())
+    rtype = "m" if monthly else "q"
+    view  = discord.ui.View(timeout=None)
+
+    if mode == "summary":
+        view.add_item(ReportButton(start_epoch, end_epoch, rtype, "active", 0))
+        if not monthly:  # przycisk Nieaktywni tylko w raporcie kwartalnym
+            view.add_item(ReportButton(start_epoch, end_epoch, rtype, "inactive", 0))
+    else:
+        view.add_item(ReportButton(start_epoch, end_epoch, rtype, "summary", 0))
+        if page > 0:
+            view.add_item(ReportButton(start_epoch, end_epoch, rtype, mode, page - 1, label="◀"))
+        if page < total_pages - 1:
+            view.add_item(ReportButton(start_epoch, end_epoch, rtype, mode, page + 1, label="▶"))
+    return view
+
+class ReportButton(discord.ui.DynamicItem[discord.ui.Button],
+                    template=r'rpt\|(?P<start>\d+)\|(?P<end>\d+)\|(?P<rtype>[mq])\|(?P<mode>active|inactive|summary)\|(?P<page>\d+)'):
+    """Trwały przycisk raportu – stan (okres/widok/strona) zakodowany w custom_id,
+    więc działa nawet po restarcie bota (rejestrowany raz w on_ready)."""
+
+    LABELS = {"active": "Aktywni", "inactive": "Nieaktywni", "summary": "Powrót"}
+
+    def __init__(self, start_epoch: int, end_epoch: int, rtype: str, mode: str, page: int, *, label: str = None):
+        super().__init__(discord.ui.Button(
+            label=label or self.LABELS.get(mode, mode),
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"rpt|{start_epoch}|{end_epoch}|{rtype}|{mode}|{page}",
+        ))
+        self.start_epoch = start_epoch
+        self.end_epoch   = end_epoch
+        self.rtype = rtype
+        self.mode  = mode
+        self.page  = page
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match, /):
+        return cls(int(match["start"]), int(match["end"]), match["rtype"], match["mode"], int(match["page"]))
+
+    async def callback(self, interaction: discord.Interaction):
+        start_ts = datetime.fromtimestamp(self.start_epoch, tz=timezone.utc)
+        end_ts   = datetime.fromtimestamp(self.end_epoch, tz=timezone.utc)
+        monthly  = (self.rtype == "m")
+        try:
+            embed, view = await _build_report_content(start_ts, end_ts, self.mode, self.page, monthly)
+            await interaction.response.edit_message(embed=embed, view=view)
+        except Exception as e:
+            print(f"⚠️  ReportButton callback – błąd: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Nie udało się załadować danych.", ephemeral=True)
+
 async def _send_monthly_report():
     ch = await _get_report_channel()
     if not ch:
         return
-    now   = datetime.now(LOCAL_TZ)
-    month = now.month - 1 if now.month > 1 else 12
-    year  = now.year if now.month > 1 else now.year - 1
-    MONTH_PL = ["","Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec",
-                "Lipiec","Sierpień","Wrzesień","Październik","Listopad","Grudzień"]
-    rows  = await db.get_stats(period="month")
-    embed = fmt.build_embed(rows, f"📆 Raport miesięczny – {MONTH_PL[month]} {year}", discord.Color.green(), limit=10)
-    embed.set_footer(text=f"Top 10 z {len(rows)} aktywnych osób • Pełne dane w załączonym CSV • "
-                          f"Automatyczny raport – 1. dzień każdego miesiąca o 10:00")
-    csv_file = fmt.build_csv(rows, f"raport-miesieczny-{year}-{month:02d}.csv")
-    await ch.send(embed=embed, file=csv_file)
+    end_ts   = datetime.now(LOCAL_TZ).astimezone(timezone.utc)
+    start_ts = end_ts - timedelta(days=30)
+    embed, view = await _build_report_content(start_ts, end_ts, "summary", 0, monthly=True)
+    await ch.send(embed=embed, view=view)
+    rows = await db.get_stats_range(start_ts, end_ts)
     await db.log_report("monthly", len(rows))
 
 async def _send_quarterly_report():
     ch = await _get_report_channel()
     if not ch:
         return
-    now     = datetime.now(LOCAL_TZ)
-    quarter = (now.month - 1) // 3
-    q_label = f"Q{quarter} {now.year}" if quarter > 0 else f"Q4 {now.year - 1}"
-    rows    = await db.get_stats(period="quarter")
-    embed   = fmt.build_embed(rows, f"📊 Raport kwartalny – {q_label}", discord.Color.orange(), limit=10)
-
-    LONG_INACTIVE_DAYS = 60  # co najmniej 2 miesiące
-    guild = _get_main_guild()
-    long_inactive = await _get_long_inactive_members(guild, LONG_INACTIVE_DAYS) if guild else []
-
-    if long_inactive:
-        MAX_FIELDS      = 5     # bezpieczny limit (Discord pozwala max 25 pól na embed)
-        CHARS_PER_FIELD = 1000
-
-        lines = []
-        for entry in long_inactive:
-            lines.append(f"{len(lines)+1}. **{entry['display_name']}** – nieaktywny/a od {entry['days_inactive']} dni")
-
-        # Grupowanie w kawałki po CHARS_PER_FIELD znaków, ze śledzeniem
-        # bieżącej długości w locie (zamiast przeliczania sumy przy każdej
-        # linii od nowa).
-        chunks, chunk, chunk_len = [], [], 0
-        for line in lines:
-            line_len = len(line) + 1
-            if chunk and chunk_len + line_len > CHARS_PER_FIELD:
-                chunks.append("\n".join(chunk))
-                chunk, chunk_len = [], 0
-            chunk.append(line)
-            chunk_len += line_len
-        if chunk:
-            chunks.append("\n".join(chunk))
-
-        shown_chunks = chunks[:MAX_FIELDS]
-        for i, text in enumerate(shown_chunks):
-            embed.add_field(name=f"Nieaktywni {LONG_INACTIVE_DAYS}+ dni" if i == 0 else "ciąg dalszy",
-                            value=text, inline=False)
-
-        if len(chunks) > MAX_FIELDS:
-            shown_people = sum(len(c.split("\n")) for c in shown_chunks)
-            pominieto = len(long_inactive) - shown_people
-            embed.add_field(
-                name="…",
-                value=f"oraz **{pominieto}** innych osób nieaktywnych 60+ dni.",
-                inline=False,
-            )
-    else:
-        embed.add_field(name="Nieaktywni", value=f"Nikt nie jest nieaktywny od {LONG_INACTIVE_DAYS}+ dni – brawo!", inline=False)
-
-    embed.set_footer(text=f"Top 10 z {len(rows)} aktywnych osób • Pełne dane w załączonym CSV • Automatyczny raport kwartalny")
-    csv_file = fmt.build_csv(rows, f"raport-kwartalny-{q_label.replace(' ', '-')}.csv")
-    await ch.send(embed=embed, file=csv_file)
+    end_ts   = datetime.now(LOCAL_TZ).astimezone(timezone.utc)
+    start_ts = end_ts - timedelta(days=90)
+    embed, view = await _build_report_content(start_ts, end_ts, "summary", 0, monthly=False)
+    await ch.send(embed=embed, view=view)
+    rows = await db.get_stats_range(start_ts, end_ts)
     await db.log_report("quarterly", len(rows))
 
 async def _get_long_inactive_members(guild: discord.Guild, min_days: int) -> list[dict]:
@@ -434,7 +486,11 @@ async def _get_long_inactive_members(guild: discord.Guild, min_days: int) -> lis
             continue  # nigdy nieaktywny – pomijamy, to lista dashboardu, nie tego raportu
         days_inactive = (now - last_seen).days
         if days_inactive >= min_days:
-            result.append({"display_name": member.display_name, "days_inactive": days_inactive})
+            result.append({
+                "display_name": member.display_name,
+                "user_id": str(member.id),
+                "days_inactive": days_inactive,
+            })
     result.sort(key=lambda r: r["days_inactive"], reverse=True)
     return result
 
