@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Warunki Korzystania – Afazjometr</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.44.0/tabler-icons.min.css">
+<style>
+:root {
+  --bg:      #0e0f14;
+  --surface: #15161d;
+  --card:    #1a1b23;
+  --border:  #24252f;
+  --accent:  #5b7cfa;
+  --text:    #e6e6ea;
+  --muted:   #85868f;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.7; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+.header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.header i { font-size: 26px; color: var(--accent); }
+h1 { font-size: 26px; font-weight: 500; }
+.updated { color: var(--muted); font-size: 13px; margin-bottom: 40px; }
+h2 { font-size: 18px; font-weight: 500; margin: 36px 0 12px; display: flex; align-items: center; gap: 8px; }
+h2 i { font-size: 18px; color: var(--accent); }
+p, li { color: #cfd0d6; margin-bottom: 10px; }
+ul { padding-left: 22px; margin-bottom: 16px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin: 20px 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.back { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; margin-bottom: 32px; }
+footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/"><i class="ti ti-arrow-left" aria-hidden="true"></i> Powrót do dashboardu</a>
+
+  <div class="header">
+    <i class="ti ti-file-text" aria-hidden="true"></i>
+    <h1>Warunki Korzystania</h1>
+  </div>
+  <div class="updated">Ostatnia aktualizacja: 23 lipca 2026</div>
+
+  <p>Niniejsze Warunki Korzystania ("Warunki") regulują zasady korzystania z bota Discord <strong>Afazjometr</strong> ("Bot") oraz powiązanego z nim dashboardu webowego ("Dashboard"). Dodając Bota do serwera Discord lub korzystając z niego, akceptujesz poniższe Warunki.</p>
+
+  <h2><i class="ti ti-list-check" aria-hidden="true"></i> Opis usługi</h2>
+  <p>Bot jest narzędziem do śledzenia i prezentowania statystyk aktywności na kanałach głosowych serwera Discord. Funkcje Bota obejmują m.in.:</p>
+  <ul>
+    <li>Zliczanie czasu spędzonego przez użytkowników na kanałach głosowych.</li>
+    <li>Generowanie rankingów aktywności, dostępnych przez komendy oraz Dashboard.</li>
+    <li>Automatyczne powiadomienia o progach aktywności i długotrwałej nieaktywności.</li>
+    <li>Publikowanie okresowych, automatycznych raportów oraz ogłoszeń na kanałach tekstowych.</li>
+    <li>Śledzenie zaproszeń, dzięki czemu widoczne jest kto zaprosił nowego członka serwera.</li>
+  </ul>
+
+  <h2><i class="ti ti-alert-triangle" aria-hidden="true"></i> Zastrzeżenia</h2>
+  <div class="card">
+    <p>Bot jest dostarczany "tak jak jest" (as-is), bez jakichkolwiek gwarancji co do nieprzerwanego działania, dokładności zbieranych danych czy dostępności. Administrator serwera oraz twórca Bota nie ponoszą odpowiedzialności za:</p>
+    <ul style="margin-bottom:0">
+      <li>Przerwy w działaniu Bota wynikające z awarii infrastruktury (Discord, Railway.com) lub konserwacji.</li>
+      <li>Utratę lub nieścisłość danych statystycznych.</li>
+      <li>Decyzje administracyjne (np. przyznanie lub odebranie rangi) podjęte na podstawie danych z Bota.</li>
+    </ul>
+  </div>
+
+  <h2><i class="ti ti-gavel" aria-hidden="true"></i> Zasady korzystania</h2>
+  <ul>
+    <li>Bot i Dashboard mogą być używane wyłącznie zgodnie z <a href="https://discord.com/terms" target="_blank" rel="noopener">Warunkami Korzystania Discorda</a> oraz <a href="https://discord.com/guidelines" target="_blank" rel="noopener">Wytycznymi Społeczności Discord</a>.</li>
+    <li>Zabronione jest podejmowanie prób zakłócenia działania Bota, w tym nadużywania jego komend czy API.</li>
+    <li>Dostęp do Dashboardu jest ograniczony do osób autoryzowanych przez administrację serwera.</li>
+  </ul>
+
+  <h2><i class="ti ti-refresh" aria-hidden="true"></i> Zmiany w Warunkach</h2>
+  <p>Zastrzegamy sobie prawo do modyfikacji niniejszych Warunków w dowolnym momencie. O istotnych zmianach postaramy się poinformować poprzez ogłoszenie na serwerze Discord.</p>
+
+  <h2><i class="ti ti-logout" aria-hidden="true"></i> Rezygnacja z usługi</h2>
+  <p>Administrator serwera może w każdej chwili usunąć Bota z serwera. Użytkownik może zaprzestać korzystania z Bota, opuszczając serwer, na którym Bot działa.</p>
+
+  <h2><i class="ti ti-mail" aria-hidden="true"></i> Kontakt</h2>
+  <p>W sprawach dotyczących niniejszych Warunków prosimy o kontakt z administracją serwera Discord, na którym korzystasz z Bota.</p>
+
+  <footer>Afazjometr Dashboard · Warunki Korzystania</footer>
+</div>
+</body>
+</html>

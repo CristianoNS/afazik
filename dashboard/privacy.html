@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polityka Prywatności – Afazjometr</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.44.0/tabler-icons.min.css">
+<style>
+:root {
+  --bg:      #0e0f14;
+  --surface: #15161d;
+  --card:    #1a1b23;
+  --border:  #24252f;
+  --accent:  #5b7cfa;
+  --text:    #e6e6ea;
+  --muted:   #85868f;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.7; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+.header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.header i { font-size: 26px; color: var(--accent); }
+h1 { font-size: 26px; font-weight: 500; }
+.updated { color: var(--muted); font-size: 13px; margin-bottom: 40px; }
+h2 { font-size: 18px; font-weight: 500; margin: 36px 0 12px; display: flex; align-items: center; gap: 8px; }
+h2 i { font-size: 18px; color: var(--accent); }
+p, li { color: #cfd0d6; margin-bottom: 10px; }
+ul { padding-left: 22px; margin-bottom: 16px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin: 20px 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.back { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; margin-bottom: 32px; }
+footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/"><i class="ti ti-arrow-left" aria-hidden="true"></i> Powrót do dashboardu</a>
+
+  <div class="header">
+    <i class="ti ti-shield-lock" aria-hidden="true"></i>
+    <h1>Polityka Prywatności</h1>
+  </div>
+  <div class="updated">Ostatnia aktualizacja: 23 lipca 2026</div>
+
+  <p>Niniejsza Polityka Prywatności opisuje, jakie dane zbiera i przetwarza bot Discord <strong>Afazjometr</strong> ("Bot") oraz powiązany z nim dashboard webowy ("Dashboard"), a także w jaki sposób te dane są wykorzystywane i chronione.</p>
+
+  <h2><i class="ti ti-database" aria-hidden="true"></i> Jakie dane zbieramy</h2>
+  <div class="card">
+    <ul>
+      <li><strong>Identyfikator Discord (ID użytkownika)</strong> — unikalny numer przypisany do Twojego konta Discord.</li>
+      <li><strong>Nazwa wyświetlana (nick)</strong> na serwerze w momencie aktywności.</li>
+      <li><strong>Aktywność na kanałach głosowych</strong> — czas dołączenia, opuszczenia i długość trwania sesji na kanałach głosowych serwera, na którym działa Bot.</li>
+      <li><strong>Aktualne role</strong> posiadane na serwerze (odczytywane, nigdy nie modyfikowane automatycznie).</li>
+      <li><strong>Dane o zaproszeniach</strong> — informacja o tym, z którego linku zapraszającego skorzystano przy dołączeniu do serwera.</li>
+    </ul>
+  </div>
+
+  <p><strong>Bot nie zbiera i nie przechowuje treści wiadomości tekstowych.</strong> Uprawnienie do odczytu treści wiadomości (Message Content Intent) jest wykorzystywane wyłącznie do rozpoznawania komend (np. <code>!czas-tydzień</code>) i nie zapisuje ich treści.</p>
+
+  <h2><i class="ti ti-target-arrow" aria-hidden="true"></i> W jakim celu przetwarzamy dane</h2>
+  <ul>
+    <li>Generowanie statystyk i rankingów aktywności głosowej na potrzeby społeczności serwera.</li>
+    <li>Automatyczne powiadomienia o osiągnięciu progów aktywności oraz o długotrwałej nieaktywności osób posiadających określone role.</li>
+    <li>Wyświetlanie danych w Dashboardzie webowym dostępnym dla administracji serwera.</li>
+    <li>Generowanie okresowych raportów aktywności publikowanych na kanałach tekstowych serwera.</li>
+  </ul>
+
+  <h2><i class="ti ti-server-2" aria-hidden="true"></i> Przechowywanie danych</h2>
+  <p>Dane przechowywane są w bazie danych PostgreSQL hostowanej przez Railway.com. Dane są przechowywane przez czas nieokreślony, dopóki administrator serwera nie zdecyduje o ich usunięciu. Dostęp do Dashboardu jest ograniczony wyłącznie do wybranych, autoryzowanych osób poprzez logowanie Discord OAuth2.</p>
+
+  <h2><i class="ti ti-users" aria-hidden="true"></i> Udostępnianie danych osobom trzecim</h2>
+  <p>Nie sprzedajemy ani nie udostępniamy zebranych danych żadnym podmiotom zewnętrznym. Dane są wykorzystywane wyłącznie na potrzeby działania Bota i Dashboardu w obrębie serwera Discord, na którym Bot został zainstalowany.</p>
+
+  <h2><i class="ti ti-trash" aria-hidden="true"></i> Twoje prawa</h2>
+  <p>Możesz zwrócić się do administratora serwera z prośbą o:</p>
+  <ul>
+    <li>Wgląd w dane zebrane na Twój temat.</li>
+    <li>Usunięcie swoich danych z bazy.</li>
+    <li>Wyjaśnienie sposobu przetwarzania Twoich danych.</li>
+  </ul>
+  <p>Najskuteczniejszym sposobem realizacji tych praw jest opuszczenie serwera Discord, na którym Bot działa, lub bezpośredni kontakt z administracją serwera.</p>
+
+  <h2><i class="ti ti-mail" aria-hidden="true"></i> Kontakt</h2>
+  <p>W sprawach dotyczących niniejszej Polityki Prywatności prosimy o kontakt z administracją serwera Discord, na którym korzystasz z Bota.</p>
+
+  <footer>Afazjometr Dashboard · Polityka Prywatności</footer>
+</div>
+</body>
+</html>
