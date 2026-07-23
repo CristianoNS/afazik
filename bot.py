@@ -683,18 +683,12 @@ async def test_raport(ctx, typ: str = None):
 
     typ = (typ or "").lower()
     if typ in ("miesiac", "miesiąc", "monthly"):
-        await ctx.send("⏳ Generuję raport miesięczny...")
         await _send_monthly_report()
-        await ctx.send("✅ Wysłano raport miesięczny.")
     elif typ in ("kwartal", "kwartał", "quarterly"):
-        await ctx.send("⏳ Generuję raport kwartalny...")
         await _send_quarterly_report()
-        await ctx.send("✅ Wysłano raport kwartalny.")
     else:
-        await ctx.send("⏳ Generuję oba raporty (miesięczny + kwartalny)...")
         await _send_monthly_report()
         await _send_quarterly_report()
-        await ctx.send("✅ Wysłano oba raporty.")
 
 @bot.command(name="pomoc", aliases=["help"])
 @has_stats_role()
