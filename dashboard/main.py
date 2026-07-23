@@ -203,6 +203,18 @@ async def api_activity_chart(request: Request):
     require_auth(request)
     return await bot_get("/api/activity-chart")
 
+# ── Strony publiczne (bez logowania) – Polityka Prywatności / Warunki ─────────
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy():
+    with open(os.path.join(os.path.dirname(__file__), "privacy.html"), encoding="utf-8") as f:
+        return HTMLResponse(f.read())
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_of_service():
+    with open(os.path.join(os.path.dirname(__file__), "terms.html"), encoding="utf-8") as f:
+        return HTMLResponse(f.read())
+
 # ── Główna strona – SPA ───────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
