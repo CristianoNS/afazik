@@ -2,8 +2,6 @@
 stats.py – formatowanie statystyk do Discord Embeds.
 """
 
-import io
-import csv
 import discord
 
 def _fmt_time(seconds: int) -> str:
@@ -22,6 +20,7 @@ def _fmt_time(seconds: int) -> str:
 class StatsFormatter:
 
     def build_embed(self, rows: list[dict], title: str, color: discord.Color, limit: int | None = None) -> discord.Embed:
+        """Używane przez interaktywne komendy (!czas-tydzień itd.)."""
         embed = discord.Embed(title=title, color=color)
 
         if not rows:
@@ -44,18 +43,6 @@ class StatsFormatter:
             embed.set_footer(text=f"Łącznie {len(rows)} osób")
         return embed
 
-    def build_csv(self, rows: list[dict], filename: str) -> discord.File:
-        """Generuje plik CSV w pamięci ze WSZYSTKIMI wierszami (nie tylko top N z embeda)."""
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(["Pozycja", "Użytkownik", "Czas (sekundy)", "Czas"])
-        for i, row in enumerate(rows, start=1):
-            name = row.get("display_name") or f"ID:{row.get('user_id')}"
-            secs = int(row.get("total_seconds") or 0)
-            writer.writerow([i, name, secs, _fmt_time(secs)])
-        data = buf.getvalue().encode("utf-8-sig")  # BOM – poprawne polskie znaki w Excelu
-        return discord.File(io.BytesIO(data), filename=filename)
-
     def build_user_embed(self, rows: list[dict], display_name: str) -> discord.Embed:
         embed = discord.Embed(
             title=f"📋 Statystyki – {display_name}",
@@ -72,3 +59,66 @@ class StatsFormatter:
             embed.add_field(name=row["label"], value=val, inline=False)
 
         return embed
+
+    # ── Nowy format raportów miesięcznych/kwartalnych (strona statystyk) ────────
+
+    def build_summary_embed(self, title: str, summary: dict, color: discord.Color) -> discord.Embed:
+        """Strona 1 raportu – zbiorcze statystyki w formie kart (pól embeda),
+        nie listy punktowanej."""
+        embed = discord.Embed(title=title, color=color)
+
+        embed.add_field(name="Łącznie aktywnych", value=str(summary["active_users"]), inline=True)
+        embed.add_field(name="Łączny czas", value=_fmt_time(summary["total_seconds"]), inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)  # spacer – wyrównanie do 3 kolumn
+
+        ls = summary.get("longest_session")
+        embed.add_field(
+            name="Najdłuższa sesja",
+            value=f"{_fmt_time(ls['duration_s'])} – {ls['display_name']}" if ls else "brak danych",
+            inline=True,
+        )
+        bd = summary.get("best_day")
+        embed.add_field(
+            name="Najlepszy dzień",
+            value=f"{_fmt_time(bd['total_seconds'])} – {bd['day'].strftime('%d.%m')}" if bd else "brak danych",
+            inline=True,
+        )
+        ak = summary.get("afazja_king")
+        embed.add_field(
+            name="Król Afazji",
+            value=f"{ak['display_name']} – {_fmt_time(ak['total_seconds'])}" if ak else "brak danych",
+            inline=True,
+        )
+        return embed
+
+    # ── Nowy format raportów – paginowane listy Aktywni / Nieaktywni ───────────
+
+    def build_list_embed(self, title: str, entries: list[dict], page: int, per_page: int,
+                          ranks: dict, mode: str, color: discord.Color):
+        """Zwraca (embed, total_pages, faktyczna_strona).
+
+        entries dla mode="active":   [{display_name, user_id, total_seconds}, ...]
+        entries dla mode="inactive": [{display_name, user_id, days_inactive}, ...]
+        ranks: {user_id_str: "BROJLER"|"OPIERZONY"|"PISKLAK"}
+        """
+        embed = discord.Embed(title=title, color=color)
+        total_pages = max(1, (len(entries) + per_page - 1) // per_page)
+        page = max(0, min(page, total_pages - 1))
+        chunk = entries[page * per_page:(page + 1) * per_page]
+
+        if not chunk:
+            embed.description = "Brak danych."
+        else:
+            lines = []
+            for i, e in enumerate(chunk, start=page * per_page + 1):
+                rank = ranks.get(str(e.get("user_id", "")), "PISKLAK")
+                rank_tag = f"`{rank}`"
+                if mode == "active":
+                    val = _fmt_time(int(e["total_seconds"]))
+                else:
+                    val = f"{e['days_inactive']} dni"
+                lines.append(f"{i}. **{e['display_name']}** {rank_tag} – {val}")
+            embed.description = "\n".join(lines)
+
+        embed.set_footer(text=f"Strona {page+1} z {total_pages}")
+        return embed, total_pages, page
