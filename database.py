@@ -396,6 +396,72 @@ class Database:
                 ON CONFLICT (user_id) DO UPDATE SET is_stale=$2, updated_at=NOW()
             """, user_id, is_stale)
 
+    # ── Nowy format raportów: zapytania po dokładnym przedziale czasu ───────────
+    # (nie "NOW() - 30 dni", tylko konkretne start_ts/end_ts – żeby przyciski
+    # pod raportem pokazywały ZAWSZE ten sam okres, niezależnie kiedy ktoś je klika)
+
+    async def get_period_summary(self, start_ts, end_ts) -> dict:
+        """Zbiorcze statystyki dla konkretnego, dokładnego przedziału czasu."""
+        async with self.pool.acquire() as conn:
+            totals = await conn.fetchrow("""
+                SELECT COUNT(DISTINCT user_id) AS active_users,
+                       SUM(COALESCE(duration_s,0)) AS total_seconds
+                FROM voice_sessions
+                WHERE joined_at >= $1 AND joined_at < $2
+                  AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+            """, start_ts, end_ts)
+            longest = await conn.fetchrow("""
+                SELECT display_name, duration_s FROM voice_sessions
+                WHERE joined_at >= $1 AND joined_at < $2 AND duration_s IS NOT NULL
+                ORDER BY duration_s DESC LIMIT 1
+            """, start_ts, end_ts)
+            best_day = await conn.fetchrow("""
+                SELECT DATE(joined_at AT TIME ZONE 'Europe/Warsaw') AS day,
+                       SUM(COALESCE(duration_s,0)) AS total_seconds
+                FROM voice_sessions
+                WHERE joined_at >= $1 AND joined_at < $2
+                  AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                GROUP BY day ORDER BY total_seconds DESC LIMIT 1
+            """, start_ts, end_ts)
+            afazja_king = await conn.fetchrow("""
+                SELECT (SELECT display_name FROM voice_sessions v2 WHERE v2.user_id=vs.user_id
+                        ORDER BY joined_at DESC LIMIT 1) AS display_name,
+                       SUM(COALESCE(duration_s,0)) AS total_seconds
+                FROM voice_sessions vs
+                WHERE is_special=TRUE AND joined_at >= $1 AND joined_at < $2
+                  AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 1
+            """, start_ts, end_ts)
+            return {
+                "active_users":    int(totals["active_users"] or 0),
+                "total_seconds":   int(totals["total_seconds"] or 0),
+                "longest_session": dict(longest) if longest else None,
+                "best_day":        dict(best_day) if best_day else None,
+                "afazja_king":     dict(afazja_king) if afazja_king else None,
+            }
+
+    async def get_stats_range(self, start_ts, end_ts) -> list[dict]:
+        """Pełny ranking aktywności (bez limitu) dla dokładnego przedziału czasu."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                WITH agg AS (
+                    SELECT user_id, SUM(COALESCE(duration_s,0)) AS total_seconds
+                    FROM voice_sessions
+                    WHERE joined_at >= $1 AND joined_at < $2
+                      AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                    GROUP BY user_id
+                ),
+                names AS (
+                    SELECT DISTINCT ON (user_id) user_id, display_name
+                    FROM voice_sessions
+                    ORDER BY user_id, joined_at DESC
+                )
+                SELECT CAST(agg.user_id AS TEXT) AS user_id, names.display_name, agg.total_seconds
+                FROM agg JOIN names ON names.user_id = agg.user_id
+                ORDER BY agg.total_seconds DESC
+            """, start_ts, end_ts)
+            return [dict(r) for r in rows]
+
     async def get_role_grants(self) -> list[dict]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
