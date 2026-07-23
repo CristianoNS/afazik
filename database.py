@@ -97,28 +97,46 @@ class Database:
         }
         cutoff = cutoff_map.get(period, "TO_TIMESTAMP(0)")
         async with self.pool.acquire() as conn:
+            # Zamiast N osobnych podzapytań po display_name (jedno na każdego
+            # usera) – jedno zagregowane CTE + jedno CTE z najnowszą nazwą
+            # (z całej historii, tak jak wcześniej – nie tylko z danego okresu)
+            # połączone jednym JOIN-em.
             rows = await conn.fetch(f"""
-                SELECT CAST(user_id AS TEXT) AS user_id,
-                    (SELECT display_name FROM voice_sessions v2
-                     WHERE v2.user_id=vs.user_id ORDER BY joined_at DESC LIMIT 1) AS display_name,
-                    SUM(COALESCE(duration_s,0)) AS total_seconds
-                FROM voice_sessions vs
-                WHERE joined_at >= {cutoff}
-                  AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
-                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 500
+                WITH agg AS (
+                    SELECT user_id, SUM(COALESCE(duration_s,0)) AS total_seconds
+                    FROM voice_sessions
+                    WHERE joined_at >= {cutoff}
+                      AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                    GROUP BY user_id
+                ),
+                names AS (
+                    SELECT DISTINCT ON (user_id) user_id, display_name
+                    FROM voice_sessions
+                    ORDER BY user_id, joined_at DESC
+                )
+                SELECT CAST(agg.user_id AS TEXT) AS user_id, names.display_name, agg.total_seconds
+                FROM agg JOIN names ON names.user_id = agg.user_id
+                ORDER BY agg.total_seconds DESC LIMIT 500
             """)
             return [dict(r) for r in rows]
 
     async def get_special_stats(self) -> list[dict]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT CAST(user_id AS TEXT) AS user_id,
-                    (SELECT display_name FROM voice_sessions v2
-                     WHERE v2.user_id=vs.user_id ORDER BY joined_at DESC LIMIT 1) AS display_name,
-                    SUM(COALESCE(duration_s,0)) AS total_seconds
-                FROM voice_sessions vs
-                WHERE is_special=TRUE AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
-                GROUP BY user_id ORDER BY total_seconds DESC LIMIT 500
+                WITH agg AS (
+                    SELECT user_id, SUM(COALESCE(duration_s,0)) AS total_seconds
+                    FROM voice_sessions
+                    WHERE is_special=TRUE AND (left_at IS NOT NULL OR duration_s IS NOT NULL)
+                    GROUP BY user_id
+                ),
+                names AS (
+                    SELECT DISTINCT ON (user_id) user_id, display_name
+                    FROM voice_sessions
+                    ORDER BY user_id, joined_at DESC
+                )
+                SELECT CAST(agg.user_id AS TEXT) AS user_id, names.display_name, agg.total_seconds
+                FROM agg JOIN names ON names.user_id = agg.user_id
+                ORDER BY agg.total_seconds DESC LIMIT 500
             """)
             return [dict(r) for r in rows]
 
@@ -181,6 +199,24 @@ class Database:
             await conn.execute(
                 "INSERT INTO report_log (type, entry_count) VALUES ($1, $2)",
                 report_type, entry_count)
+
+    async def was_report_sent_today(self, report_type: str, today_date) -> bool:
+        """Sprawdza czy raport danego typu został już wysłany dzisiaj.
+
+        `today_date` to obiekt date wyliczony po stronie bota z uwzględnieniem
+        skonfigurowanej strefy czasowej (TIMEZONE) – żeby nie dublować logiki
+        stref czasowych w SQL.
+
+        Używane jako zabezpieczenie przed pominięciem raportu (np. gdy bot
+        restartował się dokładnie o 10:00) i przed podwójnym wysłaniem.
+        """
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT 1 FROM report_log
+                WHERE type=$1 AND sent_at::date = $2
+                LIMIT 1
+            """, report_type, today_date)
+            return row is not None
 
     async def get_report_log(self) -> list[dict]:
         async with self.pool.acquire() as conn:
