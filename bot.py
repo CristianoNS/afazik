@@ -350,9 +350,11 @@ async def _send_monthly_report():
     MONTH_PL = ["","Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec",
                 "Lipiec","Sierpień","Wrzesień","Październik","Listopad","Grudzień"]
     rows  = await db.get_stats(period="month")
-    embed = fmt.build_embed(rows, f"📆 Raport miesięczny – {MONTH_PL[month]} {year}", discord.Color.green())
-    embed.set_footer(text="Automatyczny raport – 1. dzień każdego miesiąca o 10:00")
-    await ch.send(embed=embed)
+    embed = fmt.build_embed(rows, f"📆 Raport miesięczny – {MONTH_PL[month]} {year}", discord.Color.green(), limit=10)
+    embed.set_footer(text=f"Top 10 z {len(rows)} aktywnych osób • Pełne dane w załączonym CSV • "
+                          f"Automatyczny raport – 1. dzień każdego miesiąca o 10:00")
+    csv_file = fmt.build_csv(rows, f"raport-miesieczny-{year}-{month:02d}.csv")
+    await ch.send(embed=embed, file=csv_file)
     await db.log_report("monthly", len(rows))
 
 async def _send_quarterly_report():
@@ -363,16 +365,20 @@ async def _send_quarterly_report():
     quarter = (now.month - 1) // 3
     q_label = f"Q{quarter} {now.year}" if quarter > 0 else f"Q4 {now.year - 1}"
     rows    = await db.get_stats(period="quarter")
-    embed   = fmt.build_embed(rows, f"📊 Raport kwartalny – {q_label}", discord.Color.orange())
-    inactive = await _get_inactive_members()
-    if inactive:
+    embed   = fmt.build_embed(rows, f"📊 Raport kwartalny – {q_label}", discord.Color.orange(), limit=10)
+
+    LONG_INACTIVE_DAYS = 60  # co najmniej 2 miesiące
+    guild = _get_main_guild()
+    long_inactive = await _get_long_inactive_members(guild, LONG_INACTIVE_DAYS) if guild else []
+
+    if long_inactive:
         MAX_FIELDS      = 5     # bezpieczny limit (Discord pozwala max 25 pól na embed)
         CHARS_PER_FIELD = 1000
 
         lines = []
-        for m in inactive:
-            joined = m.joined_at.strftime("%d.%m.%Y") if m.joined_at else "?"
-            lines.append(f"👤 **{m.display_name}** – na serwerze od {joined}")
+        for entry in long_inactive:
+            days_text = "nigdy nie był/a aktywny/a" if entry["days_inactive"] is None else f"nieaktywny/a od {entry['days_inactive']} dni"
+            lines.append(f"{len(lines)+1}. **{entry['display_name']}** – {days_text}")
 
         # Grupowanie w kawałki po CHARS_PER_FIELD znaków, ze śledzeniem
         # bieżącej długości w locie (zamiast przeliczania sumy przy każdej
@@ -390,22 +396,46 @@ async def _send_quarterly_report():
 
         shown_chunks = chunks[:MAX_FIELDS]
         for i, text in enumerate(shown_chunks):
-            embed.add_field(name="😴 Nigdy nie byli na kanałach głosowych" if i == 0 else "↪️ ciąg dalszy",
+            embed.add_field(name=f"Nieaktywni {LONG_INACTIVE_DAYS}+ dni" if i == 0 else "ciąg dalszy",
                             value=text, inline=False)
 
         if len(chunks) > MAX_FIELDS:
             shown_people = sum(len(c.split("\n")) for c in shown_chunks)
-            pominieto = len(inactive) - shown_people
+            pominieto = len(long_inactive) - shown_people
             embed.add_field(
                 name="…",
-                value=f"oraz **{pominieto}** innych osób. Pełna lista dostępna w dashboardzie → zakładka *Nieaktywni*.",
+                value=f"oraz **{pominieto}** innych osób. Pełna lista (wszyscy nigdy nieaktywni) dostępna w dashboardzie → zakładka *Nieaktywni*.",
                 inline=False,
             )
     else:
-        embed.add_field(name="😴 Nieaktywni", value="Wszyscy członkowie byli aktywni – brawo!", inline=False)
-    embed.set_footer(text="Automatyczny raport kwartalny")
-    await ch.send(embed=embed)
+        embed.add_field(name="Nieaktywni", value=f"Nikt nie jest nieaktywny od {LONG_INACTIVE_DAYS}+ dni – brawo!", inline=False)
+
+    embed.set_footer(text=f"Top 10 z {len(rows)} aktywnych osób • Pełne dane w załączonym CSV • Automatyczny raport kwartalny")
+    csv_file = fmt.build_csv(rows, f"raport-kwartalny-{q_label.replace(' ', '-')}.csv")
+    await ch.send(embed=embed, file=csv_file)
     await db.log_report("quarterly", len(rows))
+
+async def _get_long_inactive_members(guild: discord.Guild, min_days: int) -> list[dict]:
+    """Osoby bez aktywności głosowej od co najmniej min_days dni – w tym
+    osoby które nigdy nie były aktywne (traktowane jako najdłuższy możliwy
+    okres nieaktywności). Osoby aktywne w ciągu ostatnich min_days dni
+    NIE są zwracane.
+    """
+    last_activity = await _get_last_activity_cached()
+    now = datetime.now(timezone.utc)
+    result = []
+    for member in guild.members:
+        if member.bot:
+            continue
+        last_seen = last_activity.get(str(member.id))
+        if last_seen is None:
+            days_inactive = None
+        else:
+            days_inactive = (now - last_seen).days
+        if days_inactive is None or days_inactive >= min_days:
+            result.append({"display_name": member.display_name, "days_inactive": days_inactive})
+    result.sort(key=lambda r: (r["days_inactive"] is None, r["days_inactive"] or 0), reverse=True)
+    return result
 
 async def _get_inactive_members() -> list[discord.Member]:
     active_ids = await db.get_all_voice_user_ids()
