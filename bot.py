@@ -81,6 +81,10 @@ def has_stats_role():
 @bot.event
 async def on_ready():
     print(f"✅  Zalogowano jako {bot.user} ({bot.user.id})")
+    if not os.getenv("DASHBOARD_SECRET"):
+        print("⚠️  UWAGA: zmienna DASHBOARD_SECRET nie jest ustawiona w Railway! "
+              "Bot wygenerował losowy klucz, który zmieni się przy każdym restarcie "
+              "i zerwie połączenie z dashboardem. Ustaw ją na stałą wartość w Variables.")
     await db.init()
     save_sessions.start()
     monthly_report_task.start()
@@ -90,10 +94,37 @@ async def on_ready():
     main_guild = _get_main_guild()
     if main_guild:
         await _refresh_invite_cache(main_guild)
+        await _recover_active_voice_sessions(main_guild)
     print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
 
 def _is_deaf(vs) -> bool:
     return vs.deaf or vs.self_deaf
+
+async def _recover_active_voice_sessions(guild: discord.Guild):
+    """Po restarcie bota – odtwarza w pamięci sesje osób, które są AKTUALNIE
+    na kanałach głosowych. Bez tego cała reszta ich sesji (aż do momentu
+    faktycznego wyjścia z kanału) byłaby cicho tracona, bo tracker.leave()
+    nie znajduje dopasowania w pustym tracker.active po restarcie.
+
+    Uwaga: czas sprzed restartu (od momentu gdy faktycznie weszli na kanał
+    do teraz) i tak jest bezpowrotnie stracony – nie da się go odtworzyć,
+    bo Discord nie udostępnia historii dołączenia do kanału głosowego.
+    Ten mechanizm ratuje tylko czas OD TERAZ do momentu wyjścia.
+    """
+    now = datetime.utcnow()
+    recovered = 0
+    for channel in guild.voice_channels:
+        if channel.id == AFK_CHANNEL_ID:
+            continue
+        for member in channel.members:
+            if member.bot:
+                continue
+            if member.voice and _is_deaf(member.voice):
+                continue
+            tracker.join(member.id, member.display_name, channel.id, channel.name, now)
+            recovered += 1
+    if recovered:
+        print(f"🔄  Odtworzono {recovered} trwających sesji głosowych po restarcie.")
 
 # ── Śledzenie zaproszeń: kto kogo zaprosił ──────────────────────────────────────
 
@@ -196,36 +227,55 @@ async def on_voice_state_update(member, before, after):
 
 @tasks.loop(minutes=5)
 async def save_sessions():
-    await tracker.flush_active(datetime.utcnow())
+    try:
+        await tracker.flush_active(datetime.utcnow())
+    except Exception as e:
+        print(f"⚠️  save_sessions – błąd: {e}")
 
 @tasks.loop(minutes=1)
 async def monthly_report_task():
-    now = datetime.now(LOCAL_TZ)
-    if now.day == 1 and now.hour == 10 and now.minute == 0:
-        await _send_monthly_report()
+    try:
+        now = datetime.now(LOCAL_TZ)
+        # Okno 10:00–10:04 (nie tylko dokładna minuta) – jeśli bot akurat
+        # restartował się o 10:00, złapiemy to w kolejnych minutach zamiast
+        # przegapić cały raport do następnego miesiąca.
+        if now.day == 1 and now.hour == 10 and now.minute < 5:
+            already_sent = await db.was_report_sent_today("monthly", now.date())
+            if not already_sent:
+                await _send_monthly_report()
+    except Exception as e:
+        print(f"⚠️  monthly_report_task – błąd: {e}")
 
 @tasks.loop(minutes=1)
 async def quarterly_report_task():
-    now = datetime.now(LOCAL_TZ)
-    if now.month in (1, 4, 7, 10) and now.day == 1 and now.hour == 10 and now.minute == 0:
-        await _send_quarterly_report()
+    try:
+        now = datetime.now(LOCAL_TZ)
+        if now.month in (1, 4, 7, 10) and now.day == 1 and now.hour == 10 and now.minute < 5:
+            already_sent = await db.was_report_sent_today("quarterly", now.date())
+            if not already_sent:
+                await _send_quarterly_report()
+    except Exception as e:
+        print(f"⚠️  quarterly_report_task – błąd: {e}")
 
 # ── Ogłoszenia Afazja ──────────────────────────────────────────────────────────
 
 @tasks.loop(minutes=1)
 async def afazja_announcer():
-    now = datetime.now(LOCAL_TZ)
-    wd  = now.weekday()
-    if wd not in (4, 5):
-        return
-    if ANNOUNCE_CHANNEL_ID == 0:
-        return
-    if now.hour == 10 and now.minute == 0:
-        await _send_afazja_main(wd)
-    elif now.hour == 15 and now.minute == 0:
-        await _send_afazja_reminder_1()
-    elif now.hour == 19 and now.minute == 0:
-        await _send_afazja_reminder_2()
+    try:
+        now = datetime.now(LOCAL_TZ)
+        wd  = now.weekday()
+        if wd not in (4, 5):
+            return
+        if ANNOUNCE_CHANNEL_ID == 0:
+            return
+        if now.hour == 10 and now.minute == 0:
+            await _send_afazja_main(wd)
+        elif now.hour == 15 and now.minute == 0:
+            await _send_afazja_reminder_1()
+        elif now.hour == 19 and now.minute == 0:
+            await _send_afazja_reminder_2()
+    except Exception as e:
+        print(f"⚠️  afazja_announcer – błąd: {e}")
 
 def _mentions() -> str:
     parts = []
@@ -316,19 +366,41 @@ async def _send_quarterly_report():
     embed   = fmt.build_embed(rows, f"📊 Raport kwartalny – {q_label}", discord.Color.orange())
     inactive = await _get_inactive_members()
     if inactive:
-        lines, chunk, chunks = [], [], []
+        MAX_FIELDS      = 5     # bezpieczny limit (Discord pozwala max 25 pól na embed)
+        CHARS_PER_FIELD = 1000
+
+        lines = []
         for m in inactive:
             joined = m.joined_at.strftime("%d.%m.%Y") if m.joined_at else "?"
             lines.append(f"👤 **{m.display_name}** – na serwerze od {joined}")
+
+        # Grupowanie w kawałki po CHARS_PER_FIELD znaków, ze śledzeniem
+        # bieżącej długości w locie (zamiast przeliczania sumy przy każdej
+        # linii od nowa).
+        chunks, chunk, chunk_len = [], [], 0
         for line in lines:
-            if sum(len(l)+1 for l in chunk) + len(line) > 1000:
-                chunks.append("\n".join(chunk)); chunk = []
+            line_len = len(line) + 1
+            if chunk and chunk_len + line_len > CHARS_PER_FIELD:
+                chunks.append("\n".join(chunk))
+                chunk, chunk_len = [], 0
             chunk.append(line)
+            chunk_len += line_len
         if chunk:
             chunks.append("\n".join(chunk))
-        for i, text in enumerate(chunks):
+
+        shown_chunks = chunks[:MAX_FIELDS]
+        for i, text in enumerate(shown_chunks):
             embed.add_field(name="😴 Nigdy nie byli na kanałach głosowych" if i == 0 else "↪️ ciąg dalszy",
                             value=text, inline=False)
+
+        if len(chunks) > MAX_FIELDS:
+            shown_people = sum(len(c.split("\n")) for c in shown_chunks)
+            pominieto = len(inactive) - shown_people
+            embed.add_field(
+                name="…",
+                value=f"oraz **{pominieto}** innych osób. Pełna lista dostępna w dashboardzie → zakładka *Nieaktywni*.",
+                inline=False,
+            )
     else:
         embed.add_field(name="😴 Nieaktywni", value="Wszyscy członkowie byli aktywni – brawo!", inline=False)
     embed.set_footer(text="Automatyczny raport kwartalny")
@@ -358,19 +430,22 @@ def _is_quiet_hours() -> bool:
 
 @tasks.loop(hours=1)
 async def threshold_and_stale_checker():
-    if _is_quiet_hours():
-        return  # poza oknem 8:00–22:00 – nic nie sprawdzamy ani nie wysyłamy;
-                # najbliższe uruchomienie w oknie aktywnym złapie te same zdarzenia
-    guild = _get_main_guild()
-    if not guild:
-        return
     try:
-        members_by_id = {m.id: m async for m in guild.fetch_members(limit=None)}
+        if _is_quiet_hours():
+            return  # poza oknem 8:00–22:00 – nic nie sprawdzamy ani nie wysyłamy;
+                    # najbliższe uruchomienie w oknie aktywnym złapie te same zdarzenia
+        guild = _get_main_guild()
+        if not guild:
+            return
+        try:
+            members_by_id = {m.id: m async for m in guild.fetch_members(limit=None)}
+        except Exception as e:
+            print(f"threshold_and_stale_checker fetch_members error: {e}")
+            members_by_id = {m.id: m for m in guild.members}
+        await _check_threshold_crossings(guild, members_by_id)
+        await _check_stale_ranks(guild, members_by_id)
     except Exception as e:
-        print(f"threshold_and_stale_checker fetch_members error: {e}")
-        members_by_id = {m.id: m for m in guild.members}
-    await _check_threshold_crossings(guild, members_by_id)
-    await _check_stale_ranks(guild, members_by_id)
+        print(f"⚠️  threshold_and_stale_checker – błąd: {e}")
 
 async def _check_threshold_crossings(guild: discord.Guild, members_by_id: dict):
     """Informuje o przekroczeniu progu 48h (OPIERZONY) i 96h (BROJLER).
@@ -428,7 +503,7 @@ async def _check_stale_ranks(guild: discord.Guild, members_by_id: dict):
 
     role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
     role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
-    last_activity  = await db.get_last_activity_per_user()
+    last_activity  = await _get_last_activity_cached()
     now = datetime.now(timezone.utc)
 
     for member in members_by_id.values():
@@ -535,8 +610,8 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CheckFailure):
         try:
             await ctx.message.delete()
-        except discord.Forbidden:
-            pass
+        except (discord.Forbidden, discord.NotFound):
+            pass  # brak uprawnień albo wiadomość już usunięta – oba przypadki bezpiecznie ignorujemy
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send("❌ Nie znalazłem takiego użytkownika.")
     else:
@@ -702,11 +777,26 @@ async def api_records(request):
     if not _auth(request): return web.Response(status=401)
     return _json(await db.get_records())
 
+# Cache dla ostatniej aktywności (60s) – to samo obciążenie DB co
+# _member_roles_cache, ale dla osobnego, dość ciężkiego zapytania GROUP BY.
+_last_activity_cache = {"data": None, "fetched_at": 0.0}
+LAST_ACTIVITY_CACHE_TTL = 60  # sekundy
+
+async def _get_last_activity_cached() -> dict:
+    now_ts = time.monotonic()
+    if _last_activity_cache["data"] is not None and \
+       (now_ts - _last_activity_cache["fetched_at"]) < LAST_ACTIVITY_CACHE_TTL:
+        return _last_activity_cache["data"]
+    data = await db.get_last_activity_per_user()
+    _last_activity_cache["data"]       = data
+    _last_activity_cache["fetched_at"] = now_ts
+    return data
+
 async def api_stale_ranked(request):
     """Osoby z rangą OPIERZONY/BROJLER nieaktywne od ponad STALE_DAYS dni."""
     if not _auth(request): return web.Response(status=401)
 
-    last_activity = await db.get_last_activity_per_user()
+    last_activity = await _get_last_activity_cached()
     now = datetime.now(timezone.utc)
     ranked = await _get_all_members_ranked()  # korzysta ze wspólnego cache 60s
     result = []
