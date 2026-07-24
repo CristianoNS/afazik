@@ -81,6 +81,7 @@ def has_stats_role():
 @bot.event
 async def on_ready():
     print(f"✅  Zalogowano jako {bot.user} ({bot.user.id})")
+    await bot.change_presence(activity=discord.CustomActivity(name="I see you, 24/7."))
     bot.add_dynamic_items(ReportButton)  # przyciski raportów – przeżywają restart bota
     if not os.getenv("DASHBOARD_SECRET"):
         print("⚠️  UWAGA: zmienna DASHBOARD_SECRET nie jest ustawiona w Railway! "
