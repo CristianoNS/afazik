@@ -31,6 +31,9 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_vs_user    ON voice_sessions(user_id);
                 CREATE INDEX IF NOT EXISTS idx_vs_joined  ON voice_sessions(joined_at);
                 CREATE INDEX IF NOT EXISTS idx_vs_special ON voice_sessions(is_special);
+                -- Pod CTE "names" (DISTINCT ON (user_id) ... ORDER BY user_id, joined_at DESC),
+                -- które wcześniej skanowało całą tabelę przy każdym rankingu.
+                CREATE INDEX IF NOT EXISTS idx_vs_user_joined ON voice_sessions(user_id, joined_at DESC);
 
                 CREATE TABLE IF NOT EXISTS report_log (
                     id         BIGSERIAL PRIMARY KEY,
@@ -53,6 +56,13 @@ class Database:
                     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 );
 
+                CREATE TABLE IF NOT EXISTS announce_log (
+                    slot         TEXT        NOT NULL,
+                    announce_day DATE        NOT NULL,
+                    sent_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (slot, announce_day)
+                );
+
                 CREATE TABLE IF NOT EXISTS role_grants (
                     id           BIGSERIAL PRIMARY KEY,
                     user_id      BIGINT      NOT NULL,
@@ -73,11 +83,19 @@ class Database:
             """, user_id, display_name, channel_id, channel_name, joined_at, is_special)
             return row["id"]
 
-    async def close_session(self, session_id, left_at, duration_s, display_name):
+    async def close_session(self, session_id, left_at, duration_s, display_name, is_special=None):
+        """is_special=None zachowuje wartość ustaloną przy otwarciu sesji."""
         async with self.pool.acquire() as conn:
-            await conn.execute("""
-                UPDATE voice_sessions SET left_at=$1, duration_s=$2, display_name=$3 WHERE id=$4
-            """, left_at, duration_s, display_name, session_id)
+            if is_special is None:
+                await conn.execute("""
+                    UPDATE voice_sessions SET left_at=$1, duration_s=$2, display_name=$3 WHERE id=$4
+                """, left_at, duration_s, display_name, session_id)
+            else:
+                await conn.execute("""
+                    UPDATE voice_sessions
+                    SET left_at=$1, duration_s=$2, display_name=$3, is_special=$4
+                    WHERE id=$5
+                """, left_at, duration_s, display_name, is_special, session_id)
 
     async def update_session_checkpoint(self, session_id, display_name, checkpoint, duration_so_far):
         async with self.pool.acquire() as conn:
@@ -461,6 +479,46 @@ class Database:
                 ORDER BY agg.total_seconds DESC
             """, start_ts, end_ts)
             return [dict(r) for r in rows]
+
+    # ── Dedupe ogłoszeń Afazja ──────────────────────────────────────────────────
+
+    async def was_announce_sent(self, slot: str, day) -> bool:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT 1 FROM announce_log WHERE slot=$1 AND announce_day=$2", slot, day)
+            return row is not None
+
+    async def log_announce(self, slot: str, day):
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO announce_log (slot, announce_day) VALUES ($1,$2)
+                ON CONFLICT (slot, announce_day) DO NOTHING
+            """, slot, day)
+
+    # ── Batchowe odczyty stanów powiadomień ─────────────────────────────────────
+    # Wcześniej checker robił 2 zapytania NA OSOBĘ co godzinę (przy 150 członkach
+    # ~300 round-tripów zamiast dwóch).
+
+    async def get_all_threshold_alerts(self) -> set[tuple[int, str]]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT user_id, threshold FROM threshold_alerts")
+            return {(r["user_id"], r["threshold"]) for r in rows}
+
+    async def get_all_stale_states(self) -> dict[int, bool]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT user_id, is_stale FROM stale_rank_state")
+            return {r["user_id"]: bool(r["is_stale"]) for r in rows}
+
+    async def set_stale_states_bulk(self, states: list[tuple[int, bool]]):
+        """Zapisuje wiele stanów jednym round-tripem."""
+        if not states:
+            return
+        async with self.pool.acquire() as conn:
+            await conn.executemany("""
+                INSERT INTO stale_rank_state (user_id, is_stale, updated_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (user_id) DO UPDATE SET is_stale=$2, updated_at=NOW()
+            """, states)
 
     async def get_role_grants(self) -> list[dict]:
         async with self.pool.acquire() as conn:
