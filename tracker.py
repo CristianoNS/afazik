@@ -9,7 +9,7 @@ Bot pracuje w UTC; konwersja do strefy PL (UTC+1 / UTC+2) przez env TIMEZONE.
 """
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from database import Database
@@ -34,6 +34,27 @@ def _is_special_window(dt_utc: datetime) -> bool:
     if wd == 6 and h < 6:
         return True
     return False
+
+
+def _overlaps_special_window(start_utc: datetime, end_utc: datetime) -> bool:
+    """Czy sesja w OGÓLE dotyka okna Afazji – sprawdzane po całym jej trwaniu.
+
+    Wcześniej is_special ustalane było wyłącznie w momencie wejścia na kanał,
+    więc wejście o 19:50 w piątek wykluczało całą nocną sesję z Afazji, a
+    wejście o 5:50 zaliczało do Afazji cały dzień aż do wyjścia.
+
+    Uwaga: to nadal przybliżenie – schemat trzyma boolean, nie liczbę sekund
+    w oknie. Docelowo warto dodać kolumnę special_seconds i liczyć część wspólną.
+    """
+    if end_utc < start_utc:
+        return _is_special_window(start_utc)
+    probe = start_utc
+    step = timedelta(minutes=15)
+    while probe < end_utc:
+        if _is_special_window(probe):
+            return True
+        probe += step
+    return _is_special_window(end_utc)
 
 
 class VoiceTracker:
@@ -102,9 +123,16 @@ class VoiceTracker:
                     break
                 await asyncio.sleep(0.25)
 
+        # Przeliczamy przynależność do okna Afazji po CAŁYM czasie trwania sesji,
+        # nie tylko po momencie wejścia.
+        is_special = (
+            sess["channel_id"] == self.special_channel_id
+            and _overlaps_special_window(sess["joined"], now)
+        )
+
         if sess.get("session_id"):
             await self.db.close_session(
-                sess["session_id"], now, duration_s, sess["display_name"]
+                sess["session_id"], now, duration_s, sess["display_name"], is_special
             )
         else:
             # Sesja nigdy nie zdążyła się otworzyć w bazie (bardzo wolna odpowiedź DB)
@@ -112,9 +140,9 @@ class VoiceTracker:
             print(f"⚠️  Sesja user_id={user_id} nie miała session_id – zapisuję awaryjnie.")
             new_id = await self.db.open_session(
                 user_id, sess["display_name"], sess["channel_id"], sess["channel_name"],
-                sess["joined"], sess["is_special"],
+                sess["joined"], is_special,
             )
-            await self.db.close_session(new_id, now, duration_s, sess["display_name"])
+            await self.db.close_session(new_id, now, duration_s, sess["display_name"], is_special)
 
     async def flush_active(self, now: datetime):
         """
