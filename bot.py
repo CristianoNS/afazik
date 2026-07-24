@@ -5,6 +5,7 @@ import asyncio
 import os
 import json
 import secrets
+import signal
 import time
 import hmac
 from datetime import datetime, timezone, timedelta
@@ -25,8 +26,14 @@ LOCAL_TZ           = ZoneInfo(TZ_NAME)
 ROLE_PISKLAK_ID    = int(os.getenv("ROLE_PISKLAK_ID", "0"))
 ROLE_OPIERZONY_ID  = int(os.getenv("ROLE_OPIERZONY_ID", "0"))
 ROLE_BROJLER_ID    = int(os.getenv("ROLE_BROJLER_ID", "0"))
-DASHBOARD_SECRET   = os.getenv("DASHBOARD_SECRET", secrets.token_hex(32))
+DASHBOARD_SECRET   = os.getenv("DASHBOARD_SECRET", "")
+# Bez ustawionego sekretu API jest wyłączone (503) zamiast startować z losowym
+# kluczem, który i tak zerwałby łączność z dashboardem przy każdym restarcie.
+DASHBOARD_API_ENABLED = bool(DASHBOARD_SECRET)
 DASHBOARD_PORT     = int(os.getenv("PORT", "8080"))
+# Endpoint /api/debug-roles zrzuca ID, nick i wszystkie role każdego członka.
+# Domyślnie wyłączony – włącz tylko na czas diagnozowania (DEBUG_ENDPOINTS=1).
+DEBUG_ENDPOINTS    = os.getenv("DEBUG_ENDPOINTS", "0") == "1"
 AFK_CHANNEL_ID     = 1487890304362217562
 NOTIFICATIONS_CHANNEL_ID = 1529222104384274502  # kanał: przekroczenie progów + nieaktywność z rangą
 MAIN_GUILD_ID = 1485261012616610005  # jedyny serwer, na którym bot ma realnie działać
@@ -45,6 +52,13 @@ intents.members         = True
 intents.invites         = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 bot.remove_command("help")
+
+# Nick użytkownika trafia wprost do treści powiadomień. Nick typu "@everyone"
+# albo "<@&ID_ROLI>" pozwoliłby dowolnej osobie z serwera wywołać masowy ping
+# rękami bota. NO_PINGS blokuje to całkowicie; ogłoszenia Afazja świadomie
+# pingują tylko role z _mentions() i nic poza tym.
+NO_PINGS         = discord.AllowedMentions.none()
+ROLE_PINGS_ONLY  = discord.AllowedMentions(everyone=False, users=False, roles=True)
 
 def _get_main_guild():
     """Zwraca WYŁĄCZNIE główny serwer (MAIN_GUILD_ID).
@@ -78,25 +92,45 @@ def has_stats_role():
 
 # ── Eventy ─────────────────────────────────────────────────────────────────────
 
+# on_ready odpala się przy KAŻDYM reconnecie do Discorda, nie tylko przy starcie.
+# Bez tej flagi każdy reconnect tworzyłby nową pulę połączeń do Postgresa
+# (wyciek), próbował ponownie wystartować działające już taski (RuntimeError,
+# który przerywał resztę on_ready) i duplikował odtworzone sesje głosowe.
+_startup_done = False
+
 @bot.event
 async def on_ready():
+    global _startup_done
     print(f"✅  Zalogowano jako {bot.user} ({bot.user.id})")
     await bot.change_presence(activity=discord.CustomActivity(name="I see you, 24/7."))
+
+    if _startup_done:
+        # Reconnect – odśwież tylko to, co mogło się zdezaktualizować w trakcie rozłączenia.
+        main_guild = _get_main_guild()
+        if main_guild:
+            await _refresh_invite_cache(main_guild)
+        print("🔄  Reconnect – pominięto ponowną inicjalizację (baza i taski już działają).")
+        return
+
     bot.add_dynamic_items(ReportButton)  # przyciski raportów – przeżywają restart bota
-    if not os.getenv("DASHBOARD_SECRET"):
+    if not DASHBOARD_API_ENABLED:
         print("⚠️  UWAGA: zmienna DASHBOARD_SECRET nie jest ustawiona w Railway! "
-              "Bot wygenerował losowy klucz, który zmieni się przy każdym restarcie "
-              "i zerwie połączenie z dashboardem. Ustaw ją na stałą wartość w Variables.")
+              "HTTP API dashboardu jest WYŁĄCZONE (zwraca 503) – bez tego bot "
+              "startowałby z losowym kluczem zmieniającym się przy każdym restarcie. "
+              "Ustaw DASHBOARD_SECRET na stałą wartość w Variables.")
     await db.init()
-    save_sessions.start()
-    monthly_report_task.start()
-    quarterly_report_task.start()
-    afazja_announcer.start()
-    threshold_and_stale_checker.start()
+
+    for task in (save_sessions, monthly_report_task, quarterly_report_task,
+                 afazja_announcer, threshold_and_stale_checker):
+        if not task.is_running():
+            task.start()
+
     main_guild = _get_main_guild()
     if main_guild:
         await _refresh_invite_cache(main_guild)
         await _recover_active_voice_sessions(main_guild)
+
+    _startup_done = True
     print(f"🌐  Dashboard HTTP na porcie {DASHBOARD_PORT}")
 
 def _is_deaf(vs) -> bool:
@@ -187,12 +221,14 @@ async def on_member_join(member: discord.Member):
         inviter = used_invite.inviter.display_name if used_invite.inviter else "nieznanego użytkownika"
         await ch.send(
             f"**{member.display_name}** dołączył/a do serwera – zaproszony/a przez {inviter} "
-            f"(kod: `{used_invite.code}`)."
+            f"(kod: `{used_invite.code}`).",
+            allowed_mentions=NO_PINGS,
         )
     elif disappeared_code is not None:
         await ch.send(
             f"**{member.display_name}** dołączył/a do serwera – prawdopodobnie użył/a "
-            f"jednorazowego zaproszenia `{disappeared_code}`, które właśnie wygasło."
+            f"jednorazowego zaproszenia `{disappeared_code}`, które właśnie wygasło.",
+            allowed_mentions=NO_PINGS,
         )
     else:
         # Sprawdź link vanity URL serwera (jeśli serwer go ma)
@@ -201,9 +237,11 @@ async def on_member_join(member: discord.Member):
         except (discord.Forbidden, discord.NotFound):
             vanity = None
         if vanity is not None:
-            await ch.send(f"**{member.display_name}** dołączył/a do serwera przez własny link serwera (vanity URL).")
+            await ch.send(f"**{member.display_name}** dołączył/a do serwera przez własny link serwera (vanity URL).",
+                          allowed_mentions=NO_PINGS)
         else:
-            await ch.send(f"**{member.display_name}** dołączył/a do serwera (nie udało się ustalić zaproszenia).")
+            await ch.send(f"**{member.display_name}** dołączył/a do serwera (nie udało się ustalić zaproszenia).",
+                          allowed_mentions=NO_PINGS)
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -214,11 +252,16 @@ async def on_voice_state_update(member, before, after):
     deaf_changed    = (before.deaf != after.deaf) or (before.self_deaf != after.self_deaf)
 
     if channel_changed:
+        # UWAGA: LEAVE musi być PRZED JOIN. Odwrotna kolejność powodowała, że
+        # tracker.join() nadpisywał wpis w tracker.active, a leave() zdejmował
+        # świeżo utworzoną sesję nowego kanału (zamykając ją z czasem ~0s),
+        # przez co sesja starego kanału zostawała otwarta na zawsze, a czas na
+        # nowym kanale nie był liczony wcale.
+        if before.channel and before.channel.id != AFK_CHANNEL_ID:
+            await tracker.leave(member.id, before.channel.id, now)
         if after.channel and after.channel.id != AFK_CHANNEL_ID:
             if not _is_deaf(after):
                 tracker.join(member.id, member.display_name, after.channel.id, after.channel.name, now)
-        if before.channel and before.channel.id != AFK_CHANNEL_ID:
-            await tracker.leave(member.id, before.channel.id, now)
     elif deaf_changed and after.channel and after.channel.id != AFK_CHANNEL_ID:
         if _is_deaf(after):
             await tracker.leave(member.id, after.channel.id, now)
@@ -270,12 +313,23 @@ async def afazja_announcer():
             return
         if ANNOUNCE_CHANNEL_ID == 0:
             return
-        if now.hour == 10 and now.minute == 0:
+        # Okno 5-minutowe + dedupe w bazie zamiast dokładnej minuty. Wcześniej
+        # restart Railway albo drobny lag pętli o pełnej godzinie oznaczał, że
+        # ogłoszenie nie poszło w ogóle – bez żadnego śladu.
+        if now.minute >= 5:
+            return
+        slot = {10: "main", 15: "reminder1", 19: "reminder2"}.get(now.hour)
+        if slot is None:
+            return
+        if await db.was_announce_sent(slot, now.date()):
+            return
+        if slot == "main":
             await _send_afazja_main(wd)
-        elif now.hour == 15 and now.minute == 0:
+        elif slot == "reminder1":
             await _send_afazja_reminder_1()
-        elif now.hour == 19 and now.minute == 0:
+        else:
             await _send_afazja_reminder_2()
+        await db.log_announce(slot, now.date())
     except Exception as e:
         print(f"⚠️  afazja_announcer – błąd: {e}")
 
@@ -301,7 +355,7 @@ async def _send_afazja_main(weekday: int = 5):
     embed = discord.Embed(title=title, description=opis)
     if ANNOUNCE_IMAGE_URL:
         embed.set_image(url=ANNOUNCE_IMAGE_URL)
-    msg = await ch.send(content=mentions, embed=embed)
+    msg = await ch.send(content=mentions, embed=embed, allowed_mentions=ROLE_PINGS_ONLY)
     await msg.add_reaction("🥚")
 
 async def _send_afazja_reminder_1():
@@ -318,7 +372,7 @@ async def _send_afazja_reminder_1():
     embed = discord.Embed(title="Jeszcze tylko kilka godzin!", description=opis)
     if ANNOUNCE_IMAGE_URL:
         embed.set_image(url=ANNOUNCE_IMAGE_URL)
-    await ch.send(content=mentions, embed=embed)
+    await ch.send(content=mentions, embed=embed, allowed_mentions=ROLE_PINGS_ONLY)
 
 async def _send_afazja_reminder_2():
     ch = bot.get_channel(ANNOUNCE_CHANNEL_ID)
@@ -333,7 +387,7 @@ async def _send_afazja_reminder_2():
     embed = discord.Embed(title="Zaczynamy za chwilę!", description=opis)
     if ANNOUNCE_IMAGE_URL:
         embed.set_image(url=ANNOUNCE_IMAGE_URL)
-    await ch.send(content=mentions, embed=embed)
+    await ch.send(content=mentions, embed=embed, allowed_mentions=ROLE_PINGS_ONLY)
 
 # ── Logika raportów ────────────────────────────────────────────────────────────
 
@@ -508,6 +562,10 @@ async def _get_inactive_members() -> list[discord.Member]:
 
 STALE_DAYS = 30  # ile dni braku aktywności traktujemy jako "nieaktywny z rangą"
 
+# Discord odrzuca embed z description > 4096 znaków. Bez limitu !czas-alltime
+# przestawał działać po przekroczeniu ~80 osób w rankingu.
+EMBED_RANK_LIMIT = 25
+
 def _is_quiet_hours() -> bool:
     """Sprawdza czy jesteśmy poza oknem aktywnym (domyślnie 8:00–22:00 czasu lokalnego)."""
     hour = datetime.now(LOCAL_TZ).hour
@@ -522,11 +580,10 @@ async def threshold_and_stale_checker():
         guild = _get_main_guild()
         if not guild:
             return
-        try:
-            members_by_id = {m.id: m async for m in guild.fetch_members(limit=None)}
-        except Exception as e:
-            print(f"threshold_and_stale_checker fetch_members error: {e}")
-            members_by_id = {m.id: m for m in guild.members}
+        # Odświeżamy wspólny cache ról (ten sam, z którego korzysta dashboard),
+        # zamiast robić drugie, niezależne fetch_members(limit=None) co godzinę.
+        await _get_all_members_ranked(force_refresh=True)
+        members_by_id = {m.id: m for m in guild.members}
         await _check_threshold_crossings(guild, members_by_id)
         await _check_stale_ranks(guild, members_by_id)
     except Exception as e:
@@ -549,6 +606,7 @@ async def _check_threshold_crossings(guild: discord.Guild, members_by_id: dict):
     role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
 
     rows = await db.get_stats(period="alltime")
+    already_alerted = await db.get_all_threshold_alerts()  # jedno zapytanie zamiast N
     for row in rows:
         user_id = int(row["user_id"])
         secs    = int(row["total_seconds"] or 0)
@@ -563,20 +621,22 @@ async def _check_threshold_crossings(guild: discord.Guild, members_by_id: dict):
         has_opierzony = bool(role_opierzony and role_opierzony.id in member_role_ids)
 
         if secs >= 96 * 3600:
-            if not await db.has_threshold_alert(user_id, "BROJLER"):
+            if (user_id, "BROJLER") not in already_alerted:
                 if not has_brojler:
                     await ch.send(
-                        f"**{name}** przekroczył/a próg **96h** i spełnia wymóg uzyskania rangi **BROJLER**."
+                        f"**{name}** przekroczył/a próg **96h** i spełnia wymóg uzyskania rangi **BROJLER**.",
+                        allowed_mentions=NO_PINGS,
                     )
                 # Zapisujemy jako obsłużone niezależnie od tego czy wysłano wiadomość –
                 # jeśli ranga już była, nie chcemy pytać o to ponownie w przyszłości.
                 await db.record_threshold_alert(user_id, "BROJLER")
 
         if secs >= 48 * 3600:
-            if not await db.has_threshold_alert(user_id, "OPIERZONY"):
+            if (user_id, "OPIERZONY") not in already_alerted:
                 if not has_opierzony and not has_brojler:
                     await ch.send(
-                        f"**{name}** przekroczył/a próg **48h** i spełnia wymóg uzyskania rangi **OPIERZONY**."
+                        f"**{name}** przekroczył/a próg **48h** i spełnia wymóg uzyskania rangi **OPIERZONY**.",
+                        allowed_mentions=NO_PINGS,
                     )
                 await db.record_threshold_alert(user_id, "OPIERZONY")
 
@@ -591,6 +651,9 @@ async def _check_stale_ranks(guild: discord.Guild, members_by_id: dict):
     last_activity  = await _get_last_activity_cached()
     now = datetime.now(timezone.utc)
 
+    prev_states = await db.get_all_stale_states()  # jeden odczyt zamiast N
+    pending: list[tuple[int, bool]] = []           # zbiorczy zapis na końcu
+
     for member in members_by_id.values():
         if member.bot:
             continue
@@ -602,7 +665,9 @@ async def _check_stale_ranks(guild: discord.Guild, members_by_id: dict):
         else:
             # Brak rangi – zresetuj stan, żeby ewentualny przyszły powrót rangi
             # i ponowna nieaktywność znowu wygenerowały powiadomienie.
-            await db.set_stale_state(member.id, False)
+            # Zapisujemy tylko jeśli faktycznie coś się zmienia.
+            if prev_states.get(member.id, False):
+                pending.append((member.id, False))
             continue
 
         last_seen = last_activity.get(str(member.id))
@@ -613,16 +678,20 @@ async def _check_stale_ranks(guild: discord.Guild, members_by_id: dict):
             days_inactive = (now - last_seen).days
             is_stale = days_inactive >= STALE_DAYS
 
-        was_stale = await db.get_stale_state(member.id)
+        was_stale = prev_states.get(member.id, False)
 
         if is_stale and not was_stale:
             days_text = "nigdy nieaktywny/a" if days_inactive is None else f"{days_inactive} dni"
             await ch.send(
                 f"**{member.display_name}** jest nieaktywny/a od **{days_text}**. "
-                f"Aktualnie ma rangę **{rank}**."
+                f"Aktualnie ma rangę **{rank}**.",
+                allowed_mentions=NO_PINGS,
             )
 
-        await db.set_stale_state(member.id, is_stale)
+        if is_stale != was_stale or member.id not in prev_states:
+            pending.append((member.id, is_stale))
+
+    await db.set_stale_states_bulk(pending)
 
 # ── Komendy ────────────────────────────────────────────────────────────────────
 
@@ -630,28 +699,28 @@ async def _check_stale_ranks(guild: discord.Guild, members_by_id: dict):
 @has_stats_role()
 async def stats_week(ctx):
     rows  = await db.get_stats(period="week")
-    embed = fmt.build_embed(rows, "📅 Aktywność – ostatnie 7 dni", discord.Color.blue())
+    embed = fmt.build_embed(rows, "📅 Aktywność – ostatnie 7 dni", discord.Color.blue(), limit=EMBED_RANK_LIMIT)
     await ctx.send(embed=embed)
 
 @bot.command(name="czas-miesiac", aliases=["czas-miesiąc"])
 @has_stats_role()
 async def stats_month(ctx):
     rows  = await db.get_stats(period="month")
-    embed = fmt.build_embed(rows, "📆 Aktywność – ostatnie 30 dni", discord.Color.green())
+    embed = fmt.build_embed(rows, "📆 Aktywność – ostatnie 30 dni", discord.Color.green(), limit=EMBED_RANK_LIMIT)
     await ctx.send(embed=embed)
 
 @bot.command(name="czas-kwartal", aliases=["czas-kwartał"])
 @has_stats_role()
 async def stats_quarter(ctx):
     rows  = await db.get_stats(period="quarter")
-    embed = fmt.build_embed(rows, "📊 Aktywność – ostatnie 3 miesiące", discord.Color.orange())
+    embed = fmt.build_embed(rows, "📊 Aktywność – ostatnie 3 miesiące", discord.Color.orange(), limit=EMBED_RANK_LIMIT)
     await ctx.send(embed=embed)
 
 @bot.command(name="czas-alltime")
 @has_stats_role()
 async def stats_alltime(ctx):
     rows  = await db.get_stats(period="alltime")
-    embed = fmt.build_embed(rows, "🏆 Aktywność – wszystkie czasy", discord.Color.gold())
+    embed = fmt.build_embed(rows, "🏆 Aktywność – wszystkie czasy", discord.Color.gold(), limit=EMBED_RANK_LIMIT)
     await ctx.send(embed=embed)
 
 @bot.command(name="czas-afazja")
@@ -661,7 +730,7 @@ async def stats_special(ctx):
         await ctx.send("❌ Specjalny kanał nie jest skonfigurowany.")
         return
     rows  = await db.get_special_stats()
-    embed = fmt.build_embed(rows, "🎉 Afazja – Pt/Sb 20:00–06:00 (all time)", discord.Color.purple())
+    embed = fmt.build_embed(rows, "🎉 Afazja – Pt/Sb 20:00–06:00 (all time)", discord.Color.purple(), limit=EMBED_RANK_LIMIT)
     await ctx.send(embed=embed)
 
 @bot.command(name="czas-kto")
@@ -719,15 +788,34 @@ async def on_command_error(ctx, error):
             pass  # brak uprawnień albo wiadomość już usunięta – oba przypadki bezpiecznie ignorujemy
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send("❌ Nie znalazłem takiego użytkownika.")
+    elif isinstance(error, commands.CommandNotFound):
+        pass  # literówka w komendzie – nie zaśmiecamy logów
     else:
         print(f"Błąd komendy: {error}")
 
 # ── HTTP API dla dashboardu ────────────────────────────────────────────────────
 
 def _auth(request: web.Request) -> bool:
+    if not DASHBOARD_API_ENABLED:
+        return False
     provided = request.headers.get("Authorization", "")
     expected = f"Bearer {DASHBOARD_SECRET}"
     return hmac.compare_digest(provided, expected)
+
+def _guard(request: web.Request):
+    """Zwraca gotową odpowiedź błędu albo None jeśli można obsłużyć zapytanie.
+
+    Rozdziela trzy przypadki, które wcześniej dawały mylące 401/500:
+      503 – API wyłączone (brak DASHBOARD_SECRET) lub baza jeszcze nie wstała
+      401 – zły/brakujący token
+    """
+    if not DASHBOARD_API_ENABLED:
+        return web.json_response({"error": "API wyłączone – brak DASHBOARD_SECRET"}, status=503)
+    if not _auth(request):
+        return web.Response(status=401)
+    if db.pool is None:
+        return web.json_response({"error": "Bot się uruchamia – baza jeszcze niegotowa"}, status=503)
+    return None
 
 def _json(data) -> web.Response:
     return web.Response(
@@ -736,34 +824,41 @@ def _json(data) -> web.Response:
     )
 
 async def api_stats(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     return _json(await db.get_stats(period=request.match_info.get("period", "week")))
 
 async def api_special(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     return _json(await db.get_special_stats())
 
 async def api_reports(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     return _json(await db.get_report_log())
 
 async def api_inactive(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     members = await _get_inactive_members()
     return _json([{"display_name": m.display_name,
                    "joined_at": m.joined_at.isoformat() if m.joined_at else None}
                   for m in members])
 
 async def api_role_grants(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     return _json(await db.get_role_grants())
 
 async def api_activity_chart(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     return _json(await db.get_daily_activity(days=30))
 
 async def api_online(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     now = datetime.utcnow()
     return _json([{
         "user_id":      uid,
@@ -823,7 +918,8 @@ async def _get_all_members_ranked(force_refresh: bool = False) -> dict:
 
 async def api_debug_roles(request):
     """Diagnostyka – pokazuje surowe dane o rangach, żeby namierzyć rozbieżności."""
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     debug = {
         "ROLE_BROJLER_ID_z_konfiguracji":   ROLE_BROJLER_ID,
         "ROLE_OPIERZONY_ID_z_konfiguracji": ROLE_OPIERZONY_ID,
@@ -867,19 +963,23 @@ async def api_debug_roles(request):
 
 async def api_member_roles(request):
     """Zwraca rangę każdego membera – świeże dane z Discord API, cache 60s."""
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     return _json(await _get_all_members_ranked())
 
 async def api_monthly_activity(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     return _json(await db.get_monthly_activity())
 
 async def api_weekly_activity(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     return _json(await db.get_weekly_activity())
 
 async def api_records(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     return _json(await db.get_records())
 
 # Cache dla ostatniej aktywności (60s) – to samo obciążenie DB co
@@ -899,7 +999,8 @@ async def _get_last_activity_cached() -> dict:
 
 async def api_stale_ranked(request):
     """Osoby z rangą OPIERZONY/BROJLER nieaktywne od ponad STALE_DAYS dni."""
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
 
     last_activity = await _get_last_activity_cached()
     now = datetime.now(timezone.utc)
@@ -929,7 +1030,8 @@ async def api_stale_ranked(request):
     return _json(result)
 
 async def api_server_stats(request):
-    if not _auth(request): return web.Response(status=401)
+    err = _guard(request)
+    if err: return err
     return _json(await db.get_server_stats())
 
 def _fmt_uptime(seconds: int) -> str:
@@ -944,23 +1046,30 @@ def _fmt_uptime(seconds: int) -> str:
     return " ".join(parts)
 
 async def api_health(request):
-    """Rozszerzony health-check – status bota, bazy i śledzenia głosowego."""
+    """Health-check. Bez tokenu zwraca sam status (dla UptimeRobota itp.),
+    pełne dane diagnostyczne tylko po autoryzacji – wcześniej nazwa bota,
+    liczba serwerów, uptime i opóźnienia bazy były publiczne."""
     uptime_s = time.monotonic() - BOT_START_TIME
 
     # Sprawdź żywotność połączenia z bazą prostym zapytaniem
     db_connected = False
     db_latency_ms = None
-    try:
-        t0 = time.monotonic()
-        async with db.pool.acquire() as conn:
-            await conn.fetchval("SELECT 1")
-        db_latency_ms = round((time.monotonic() - t0) * 1000, 1)
-        db_connected = True
-    except Exception as e:
-        print(f"health-check: błąd bazy – {e}")
+    if db.pool is not None:
+        try:
+            t0 = time.monotonic()
+            async with db.pool.acquire() as conn:
+                await conn.fetchval("SELECT 1")
+            db_latency_ms = round((time.monotonic() - t0) * 1000, 1)
+            db_connected = True
+        except Exception as e:
+            print(f"health-check: błąd bazy – {e}")
+
+    status = "ok" if db_connected else "degraded"
+    if not _auth(request):
+        return _json({"status": status})  # publiczne minimum
 
     return _json({
-        "status":                "ok" if db_connected else "degraded",
+        "status":                status,
         "bot":                   str(bot.user) if bot.user else None,
         "uptime_seconds":        round(uptime_s, 1),
         "uptime_human":          _fmt_uptime(uptime_s),
@@ -982,7 +1091,11 @@ def build_app() -> web.Application:
     app.router.add_get("/api/role-grants",      api_role_grants)
     app.router.add_get("/api/activity-chart",   api_activity_chart)
     app.router.add_get("/api/member-roles",     api_member_roles)
-    app.router.add_get("/api/debug-roles",      api_debug_roles)
+    if DEBUG_ENDPOINTS:
+        # Pełny zrzut członków z rolami – rejestrowany tylko na żądanie,
+        # żeby nie trzymać stale otwartego endpointu z danymi całego serwera.
+        app.router.add_get("/api/debug-roles",  api_debug_roles)
+        print("⚠️  /api/debug-roles WŁĄCZONY (DEBUG_ENDPOINTS=1) – wyłącz po diagnozie.")
     app.router.add_get("/api/monthly-activity", api_monthly_activity)
     app.router.add_get("/api/weekly-activity",  api_weekly_activity)
     app.router.add_get("/api/records",          api_records)
@@ -990,14 +1103,40 @@ def build_app() -> web.Application:
     app.router.add_get("/api/stale-ranked",     api_stale_ranked)
     return app
 
+async def _flush_on_shutdown():
+    """Przy redeployu Railway wysyła SIGTERM. Bez tego trwające sesje traciły
+    czas od ostatniego checkpointu (do 5 minut na osobę)."""
+    try:
+        await tracker.flush_active(datetime.now(timezone.utc))
+        print("💾  Zapisano trwające sesje przed wyłączeniem.")
+    except Exception as e:
+        print(f"⚠️  Nie udało się zapisać sesji przed wyłączeniem: {e}")
+
 async def main():
     app    = build_app()
     runner = web.AppRunner(app)
     await runner.setup()
     site   = web.TCPSite(runner, "0.0.0.0", DASHBOARD_PORT)
     await site.start()
+
+    loop = asyncio.get_running_loop()
+    stop = asyncio.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except NotImplementedError:
+            pass  # Windows – pomijamy
+
     async with bot:
-        await bot.start(TOKEN)
+        bot_task = asyncio.create_task(bot.start(TOKEN))
+        done, _ = await asyncio.wait(
+            [bot_task, asyncio.create_task(stop.wait())],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if bot_task not in done:
+            await _flush_on_shutdown()
+            bot_task.cancel()
+        await runner.cleanup()
 
 if __name__ == "__main__":
     asyncio.run(main())
