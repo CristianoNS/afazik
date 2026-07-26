@@ -12,10 +12,10 @@ from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
-import asyncpg
 
 # ── Konfiguracja ──────────────────────────────────────────────────────────────
-DATABASE_URL        = os.getenv("DATABASE_URL", "")
+# Uwaga: dashboard NIE łączy się z bazą bezpośrednio — wszystkie dane
+# pobiera przez HTTP z API bota (BOT_API_URL). DATABASE_URL tu nie jest potrzebny.
 BOT_API_URL         = os.getenv("BOT_API_URL", "http://localhost:8080")
 BOT_API_SECRET      = os.getenv("DASHBOARD_SECRET", "")
 DISCORD_CLIENT_ID   = os.getenv("DISCORD_CLIENT_ID", "")
@@ -29,23 +29,10 @@ TZ                  = ZoneInfo("Europe/Warsaw")
 
 REDIRECT_URI = f"{DASHBOARD_URL}/auth/callback"
 
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global pool
-    pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
-    yield
-    await pool.close()
-
-app = FastAPI(title="Voice Tracker Dashboard", lifespan=lifespan)
+app = FastAPI(title="Voice Tracker Dashboard")
 
 # Prosta sesja in-memory (token → discord_user_id)
 sessions: dict[str, str] = {}
-
-# ── DB pool (zarządzany przez lifespan) ──────────────────────────────────────
-
-pool: asyncpg.Pool | None = None
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
