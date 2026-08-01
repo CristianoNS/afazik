@@ -741,6 +741,65 @@ async def stats_user(ctx, *, member: discord.Member = None):
     embed  = fmt.build_user_embed(rows, target.display_name)
     await ctx.send(embed=embed)
 
+class InactiveReportView(discord.ui.View):
+    """Paginacja dla !czas-nieaktywni – jednorazowa (timeout), bo to raport
+    na żądanie, w przeciwieństwie do stałych raportów miesięcznych/kwartalnych
+    (te używają ReportButton, które przetrwa restart bota)."""
+
+    def __init__(self, entries: list[dict], ranks: dict, min_days: int, page: int = 0):
+        super().__init__(timeout=180)
+        self.entries  = entries
+        self.ranks    = ranks
+        self.min_days = min_days
+        self.page     = page
+        self._sync_buttons()
+
+    def _build(self):
+        return fmt.build_list_embed(
+            f"😴 Nieaktywni {self.min_days}+ dni", self.entries, self.page,
+            REPORT_PAGE_SIZE, self.ranks, "inactive", discord.Color.red())
+
+    def _sync_buttons(self):
+        self.clear_items()
+        _, total_pages, _ = self._build()
+        if self.page > 0:
+            self.add_item(self._make_button("◀", -1))
+        if self.page < total_pages - 1:
+            self.add_item(self._make_button("▶", 1))
+
+    def _make_button(self, label: str, delta: int):
+        button = discord.ui.Button(label=label, style=discord.ButtonStyle.secondary)
+
+        async def callback(interaction: discord.Interaction):
+            self.page += delta
+            embed, _, self.page = self._build()
+            self._sync_buttons()
+            await interaction.response.edit_message(embed=embed, view=self)
+
+        button.callback = callback
+        return button
+
+    async def on_timeout(self):
+        self.clear_items()
+
+@bot.command(name="czas-nieaktywni", aliases=["czas-nieaktywni-3m"])
+@has_stats_role()
+async def stats_inactive(ctx, dni: int = 90):
+    """Raport osób nieaktywnych od co najmniej `dni` dni (domyślnie 90 = 3 miesiące).
+    W tym osoby, które nigdy nie były aktywne na kanałach głosowych.
+    Użycie: !czas-nieaktywni [liczba_dni]
+    """
+    guild = _get_main_guild()
+    if not guild:
+        await ctx.send("❌ Nie mogę odnaleźć głównego serwera.")
+        return
+    dni = max(1, dni)
+    entries = await _get_long_inactive_members(guild, dni)
+    ranks   = await _get_ranks_map()
+    view    = InactiveReportView(entries, ranks, dni)
+    embed, _, _ = view._build()
+    await ctx.send(embed=embed, view=view)
+
 @bot.command(name="test-raport")
 @commands.has_permissions(administrator=True)
 async def test_raport(ctx, typ: str = None):
@@ -771,6 +830,7 @@ async def help_cmd(ctx):
         ("!czas-alltime",     "Ranking aktywności – wszystkie czasy"),
         ("!czas-afazja",      "Kanał Afazja – Pt/Sb 20:00–06:00"),
         ("!czas-kto [@nick]", "Statystyki konkretnej osoby"),
+        ("!czas-nieaktywni [dni]", "Raport nieaktywnych – domyślnie 90 dni (3 mies.)"),
         ("!pomoc",            "Ta wiadomość"),
         ("!test-raport [miesiac|kwartal]", "Wyślij raport od razu (admin)"),
     ]
