@@ -454,8 +454,7 @@ def _build_report_view(start_ts: datetime, end_ts: datetime, monthly: bool, mode
 
     if mode == "summary":
         view.add_item(ReportButton(start_epoch, end_epoch, rtype, "active", 0))
-        if not monthly:  # przycisk Nieaktywni tylko w raporcie kwartalnym
-            view.add_item(ReportButton(start_epoch, end_epoch, rtype, "inactive", 0))
+        view.add_item(ReportButton(start_epoch, end_epoch, rtype, "inactive", 0))
     else:
         view.add_item(ReportButton(start_epoch, end_epoch, rtype, "summary", 0))
         if page > 0:
