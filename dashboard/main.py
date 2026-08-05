@@ -190,6 +190,11 @@ async def api_activity_chart(request: Request):
     require_auth(request)
     return await bot_get("/api/activity-chart")
 
+@app.get("/api/activity-list")
+async def api_activity_list(request: Request):
+    require_auth(request)
+    return await bot_get("/api/activity-list")
+
 # ── Strony publiczne (bez logowania) – Polityka Prywatności / Warunki ─────────
 
 @app.get("/privacy", response_class=HTMLResponse)
