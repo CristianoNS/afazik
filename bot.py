@@ -1000,7 +1000,13 @@ async def _build_member_snapshot_rows() -> list[tuple]:
     rows = []
     for member in members:
         last_seen = last_activity.get(str(member.id))
-        days_inactive = None if last_seen is None else (now - last_seen).days
+        if last_seen is None:
+            # Nigdy nie był na kanale – liczymy dni nieaktywności od dołączenia
+            # do serwera, zamiast pokazywać pusty wynik. last_seen zostaje None,
+            # więc front-end nadal wie, że to "nigdy", i dopisuje to w nawiasie.
+            days_inactive = (now - member.joined_at).days if member.joined_at else None
+        else:
+            days_inactive = (now - last_seen).days
         rows.append((
             member.id,
             member.display_name,
