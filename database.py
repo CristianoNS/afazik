@@ -71,6 +71,20 @@ class Database:
                     total_seconds INTEGER   NOT NULL,
                     granted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 );
+
+                -- Migawka wszystkich członków dla zakładki "Lista aktywności" w dashboardzie.
+                -- Odświeżana co godzinę przez member_snapshot_task (bot.py) – dashboard czyta
+                -- z tej tabeli zamiast pytać Discorda przy każdym wejściu na zakładkę.
+                CREATE TABLE IF NOT EXISTS member_snapshot (
+                    user_id       BIGINT      PRIMARY KEY,
+                    display_name  TEXT        NOT NULL,
+                    username      TEXT        NOT NULL,
+                    rank          TEXT        NOT NULL,
+                    joined_at     TIMESTAMPTZ,
+                    last_seen     TIMESTAMPTZ,
+                    days_inactive INTEGER,
+                    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
             """)
 
     # ── Sesje ────────────────────────────────────────────────────────────────
@@ -524,4 +538,32 @@ class Database:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT * FROM role_grants ORDER BY granted_at DESC LIMIT 100")
+            return [dict(r) for r in rows]
+
+    # ── Migawka członków – zakładka "Lista aktywności" ──────────────────────────
+
+    async def save_member_snapshot(self, rows: list[tuple]):
+        """Nadpisuje całą tabelę jednym batchem (TRUNCATE + INSERT w transakcji),
+        żeby osoby, które opuściły serwer, znikały z listy same, bez osobnego
+        DELETE po ID. rows: [(user_id, display_name, username, rank,
+        joined_at, last_seen, days_inactive), ...]"""
+        if not rows:
+            return
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute("TRUNCATE member_snapshot")
+                await conn.executemany("""
+                    INSERT INTO member_snapshot
+                        (user_id, display_name, username, rank, joined_at, last_seen, days_inactive, updated_at)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7, NOW())
+                """, rows)
+
+    async def get_member_snapshot(self) -> list[dict]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT CAST(user_id AS TEXT) AS user_id, display_name, username, rank,
+                       joined_at, last_seen, days_inactive, updated_at
+                FROM member_snapshot
+                ORDER BY display_name ASC
+            """)
             return [dict(r) for r in rows]
