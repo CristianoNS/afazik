@@ -768,9 +768,10 @@ function renderActivityList() {
   if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" class="loading">Brak wyników.</td></tr>'; return; }
   tbody.innerHTML = rows.map((r, i) => {
     const badgeClass = 'role-' + (r.rank || 'PISKLAK');
+    const neverActive = !r.last_seen;
     const days = (r.days_inactive === null || r.days_inactive === undefined) ? 'nigdy'
-               : r.days_inactive === 0 ? 'dziś aktywny'
-               : `${r.days_inactive} dni`;
+               : r.days_inactive === 0 ? (neverActive ? '0 dni (nigdy)' : 'dziś aktywny')
+               : `${r.days_inactive} dni${neverActive ? ' (nigdy)' : ''}`;
     const daysColor = (r.days_inactive === null || r.days_inactive === undefined || r.days_inactive >= 60) ? 'var(--danger)' : 'var(--text)';
     const joined = r.joined_at ? new Date(r.joined_at).toLocaleDateString('pl-PL') : '–';
     return `<tr>
@@ -788,7 +789,7 @@ function exportActivityCSV() {
   const rows = [['#', 'Nick', 'Username', 'Ranga', 'Dni nieaktywności', 'Dołączył']];
   activityData.forEach((r, i) => rows.push([
     i + 1, r.display_name || '', r.username || '', r.rank || '',
-    r.days_inactive ?? 'nigdy',
+    r.days_inactive === null || r.days_inactive === undefined ? 'nigdy' : (r.days_inactive + (r.last_seen ? '' : ' (nigdy)')),
     r.joined_at ? new Date(r.joined_at).toLocaleDateString('pl-PL') : '',
   ]));
   const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
