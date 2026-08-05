@@ -121,7 +121,7 @@ async def on_ready():
     await db.init()
 
     for task in (save_sessions, monthly_report_task, quarterly_report_task,
-                 afazja_announcer, threshold_and_stale_checker):
+                 afazja_announcer, threshold_and_stale_checker, member_snapshot_task):
         if not task.is_running():
             task.start()
 
@@ -975,6 +975,52 @@ async def _get_all_members_ranked(force_refresh: bool = False) -> dict:
     _member_roles_cache["fetched_at"] = now_ts
     return result
 
+# ── Migawka członków – zakładka "Lista aktywności" ──────────────────────────
+# Osobny task (nie dokładamy do threshold_and_stale_checker) – ten ma lecieć
+# także w quiet hours, bo dashboard powinien mieć świeże dane niezależnie od
+# okna 8:00–22:00 używanego przez powiadomienia.
+
+async def _build_member_snapshot_rows() -> list[tuple]:
+    guild = _get_main_guild()
+    if not guild:
+        return []
+    role_brojler   = guild.get_role(ROLE_BROJLER_ID)   if ROLE_BROJLER_ID   else None
+    role_opierzony = guild.get_role(ROLE_OPIERZONY_ID) if ROLE_OPIERZONY_ID else None
+    # Świeże dane, nie cache 60s – task leci raz na godzinę, więc nie ma co
+    # oszczędzać na tym jednym zapytaniu.
+    last_activity = await db.get_last_activity_per_user()
+    now = datetime.now(timezone.utc)
+
+    try:
+        members = [m async for m in guild.fetch_members(limit=None) if not m.bot]
+    except Exception as e:
+        print(f"⚠️  member_snapshot_task – fetch_members error: {e}")
+        members = [m for m in guild.members if not m.bot]
+
+    rows = []
+    for member in members:
+        last_seen = last_activity.get(str(member.id))
+        days_inactive = None if last_seen is None else (now - last_seen).days
+        rows.append((
+            member.id,
+            member.display_name,
+            member.name,
+            _rank_for_member(member, role_brojler, role_opierzony),
+            member.joined_at,
+            last_seen,
+            days_inactive,
+        ))
+    return rows
+
+@tasks.loop(hours=1)
+async def member_snapshot_task():
+    try:
+        rows = await _build_member_snapshot_rows()
+        if rows:
+            await db.save_member_snapshot(rows)
+    except Exception as e:
+        print(f"⚠️  member_snapshot_task – błąd: {e}")
+
 async def api_debug_roles(request):
     """Diagnostyka – pokazuje surowe dane o rangach, żeby namierzyć rozbieżności."""
     err = _guard(request)
@@ -1055,6 +1101,13 @@ async def _get_last_activity_cached() -> dict:
     _last_activity_cache["data"]       = data
     _last_activity_cache["fetched_at"] = now_ts
     return data
+
+async def api_activity_list(request):
+    """Migawka wszystkich członków dla zakładki 'Lista aktywności' – czytana
+    z tabeli member_snapshot (odświeżanej co godzinę), nie z Discorda na żywo."""
+    err = _guard(request)
+    if err: return err
+    return _json(await db.get_member_snapshot())
 
 async def api_stale_ranked(request):
     """Osoby z rangą OPIERZONY/BROJLER nieaktywne od ponad STALE_DAYS dni."""
@@ -1160,6 +1213,7 @@ def build_app() -> web.Application:
     app.router.add_get("/api/records",          api_records)
     app.router.add_get("/api/server-stats",     api_server_stats)
     app.router.add_get("/api/stale-ranked",     api_stale_ranked)
+    app.router.add_get("/api/activity-list",    api_activity_list)
     return app
 
 async def _flush_on_shutdown():
